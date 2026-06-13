@@ -77,6 +77,10 @@ export function facilityById(id) {
   return facilities.find((f) => f.id === id) ?? null;
 }
 
+export function traditionById(id) {
+  return traditions.find((t) => t.id === id) ?? null;
+}
+
 // 位置未取得（lat/lng が null）の一覧 — READMEの未取得一覧と対応
 export function unresolvedRecords() {
   return {

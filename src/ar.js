@@ -18,10 +18,11 @@ import {
 
 let renderer, scene, camera, locar, controls, lookControls, video, videoStream;
 let started = false;
-let mode = "live";          // "live"=カメラ＋方位センサー / "sim"=歩いて見回す検証モード
+let mode = "live";          // "live"=カメラ / "sim"=避難の現地目線 / "learn"=伝承学習
 let envGroup = null;         // 検証モードの合成シーン（空・地面・東西南北）
 let curPos = null;          // {lat,lng}
 let target = null;          // 選択中の避難施設
+let focusTradition = null;  // 学習モードで深掘り中の伝承
 let arrowGroup = null;
 let targetBoard = null;
 let traditionObjs = [];
@@ -46,7 +47,7 @@ function placeENU(obj, lat, lng, y = 0) {
 }
 // カメラの現在位置(ENU) → 実効緯度経度
 function effectiveLatLng() {
-  if (mode === "sim" && simOrigin && camera) {
+  if ((mode === "sim" || mode === "learn") && simOrigin && camera) {
     return fromEastNorth(camera.position.x, -camera.position.z, simOrigin.lat, simOrigin.lng);
   }
   return curPos;
@@ -67,9 +68,10 @@ export function effectivePos() {
   return effectiveLatLng();
 }
 export function faceTarget() {
-  if (lookControls && target && target.lat != null) {
+  const obj = mode === "learn" ? focusTradition : target;
+  if (lookControls && obj && obj.lat != null) {
     const eff = effectiveLatLng();
-    if (eff) lookControls.faceBearing(bearingDeg(eff.lat, eff.lng, target.lat, target.lng));
+    if (eff) lookControls.faceBearing(bearingDeg(eff.lat, eff.lng, obj.lat, obj.lng));
   }
 }
 export function faceNorth() {
@@ -456,15 +458,63 @@ function buildSimWorld() {
   updateGuideArrow();
 }
 
+// 伝承学習の3D世界（選んだ伝承を主役に・避難先や経路・ガイド矢印は出さない）
+function buildLearnWorld() {
+  setSky();
+  const g = new THREE.Group();
+  buildGround(g);
+  // 中心の伝承を強調表示（目印の柱＋大ラベル＋記録高ゲージ＋震度）
+  if (focusTradition && focusTradition.lat != null) {
+    const c = learnSignboard(focusTradition);
+    placeENU(c, focusTradition.lat, focusTradition.lng, 0);
+    g.add(c);
+  }
+  // 周辺の他の伝承も柱で見せる（この一帯にどんな記録があるかを一望）
+  for (const t of traditionsWithin(simOrigin, 900).slice(0, 8)) {
+    if (focusTradition && t.id === focusTradition.id) continue;
+    const s = signboard(t);
+    placeENU(s, t.lat, t.lng, 0);
+    g.add(s);
+  }
+  scene.add(g);
+  simWorld = g;
+  simBuilt = true;
+  addTownAsync(g); // 実際の町並み（OSM）も重ねる
+}
+
+// 学習で深掘りする伝承の強調表示（橙の柱＋大ラベル＋「ここまで水が来た」ゲージ＋震度）
+function learnSignboard(t) {
+  const grp = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 6, 12),
+    new THREE.MeshBasicMaterial({ color: 0xef6c00 }));
+  post.position.y = GROUND_Y + 3; grp.add(post);
+  const lines = [
+    { text: `📜 ${t.title}`, bold: true, size: 30, color: "#7a3b00" },
+    { text: t.disaster, size: 22, color: "#41505b" },
+  ];
+  if (t.intensity != null) {
+    lines.push({ text: `推定震度 ${t.intensity === 6.5 ? "6〜7" : t.intensity}（寺院被害記録）`, size: 21, color: "#b71c1c" });
+  }
+  wrap(t.evacuation_message, 30).slice(0, 1).forEach((x) =>
+    lines.push({ text: x, size: 20, color: "#5d3200" }));
+  const panel = makeTextSprite(lines, { accent: CATEGORY_COLORS.tradition, width: 620 });
+  panel.position.y = GROUND_Y + 6.8; panel.scale.multiplyScalar(1.3); grp.add(panel);
+  if (t.recorded_height_m != null) {
+    const gauge = buildHeightGauge(t.recorded_height_m, `ここまで水が来た記録 約${t.recorded_height_m}m（史料）`);
+    gauge.position.set(3.5, 0, 0); grp.add(gauge);
+  }
+  return grp;
+}
+
 // OpenStreetMapの町並み3Dを読み込んでsimWorldへ追加。失敗してもビュー自体は続行する。
 async function addTownAsync(world) {
   status("町並みデータ（OpenStreetMap）を読み込み中…", "info");
   try {
     const town = await loadTown(simOrigin);
     // 読み込み中に終了・再起動していたら古いシーンには足さない
-    if (!started || mode !== "sim" || simWorld !== world) return;
+    if (!started || (mode !== "sim" && mode !== "learn") || simWorld !== world) return;
     world.add(buildTownGroup(town, simOrigin, GROUND_Y));
-    status(`実際の町並みを立体表示中（建物${town.buildings.length}棟・形と高さはOpenStreetMapによる概形）` +
+    status("実際の町並みを立体表示中（建物の形と高さはOpenStreetMapによる概形）" +
       "© OpenStreetMap contributors", "info");
   } catch {
     if (!started || simWorld !== world) return;
@@ -488,6 +538,7 @@ function updateGuideArrow() {
 // 歩いて移動した時: 実効現在地で距離・方向を更新し、ガイド矢印を向け直す
 function onSimMove() {
   updateGuideArrow();
+  if (mode === "learn") { if (onUpdateCb) onUpdateCb({ learn: true }); return; }
   if (!target || target.lat == null) return;
   const eff = effectiveLatLng();
   const dist = distanceM(eff.lat, eff.lng, target.lat, target.lng);
@@ -510,7 +561,7 @@ function wrap(text, n) {
 
 // 避難先矢印と説明ボードを現在地に合わせて再配置（現地モード=LocAR投影用）
 function refreshTarget() {
-  if (mode === "sim") return; // 検証モードは buildSimWorld で配置
+  if (mode === "sim" || mode === "learn") return; // 歩けるモードは build*World で配置
   if (!curPos || !target || !started || target.lat == null) return;
   const dist = distanceM(curPos.lat, curPos.lng, target.lat, target.lng);
   const brg = bearingDeg(curPos.lat, curPos.lng, target.lat, target.lng);
@@ -545,7 +596,7 @@ function refreshTarget() {
 
 // 周辺の伝承ポイント（実方位に、遠いものは見える距離にクランプして表示・現地モード用）
 function refreshTraditions() {
-  if (mode === "sim") return; // 検証モードは buildSimWorld で配置
+  if (mode === "sim" || mode === "learn") return; // 歩けるモードは build*World で配置
   if (!curPos || !started) return;
   if (traditionsBuiltAt &&
       distanceM(traditionsBuiltAt.lat, traditionsBuiltAt.lng, curPos.lat, curPos.lng) < 50) {
@@ -614,9 +665,10 @@ async function startWebcam(holder) {
 // mode: "sim"=現地目線ビュー（歩いて見回す合成3D・既定）/ "live"=ARカメラ（実機・上級）
 // routeGeometry: OSRMのGeoJSON LineString（あればsimの道筋を道なりに描く）
 export async function startAR(holder,
-  { fakePos = null, facility = null, mode: m = "sim", routeGeometry = null } = {}) {
+  { fakePos = null, facility = null, mode: m = "sim", routeGeometry = null, tradition = null } = {}) {
   if (started) return;
   target = facility ?? target;
+  focusTradition = tradition;
   mode = m;
   routeGeom = routeGeometry;
 
@@ -667,12 +719,14 @@ export async function startAR(holder,
 
   locar = new LocAR.LocationBased(scene, camera);
 
-  if (mode === "sim") {
-    // 現地目線ビュー: 歩ける3D空間＋ドラッグ見回し。カメラ・方位センサーは使わない。
+  if (mode === "sim" || mode === "learn") {
+    // 歩ける3D空間＋ストリートビュー風操作。カメラ・方位センサーは使わない。
     lookControls = new LookControls(camera, renderer.domElement, { groundY: GROUND_Y });
     lookControls.onMove = onSimMove;
     simBuilt = false;
-    status("現地目線ビュー: ドラッグで見回し（離すと余韻）、行きたい場所をタップ/クリックで進めます。矢印キー/WASD（画面の◀▶▲▼）でも歩けます。", "info");
+    status(mode === "learn"
+      ? "伝承学習ビュー: ドラッグで見回し、行きたい場所をタップで移動。橙の柱が伝承スポット、青いゲージが「ここまで水が来た」記録です。下の解説をスクロールで読めます。"
+      : "現地目線ビュー: ドラッグで見回し（離すと余韻）、行きたい場所をタップ/クリックで進めます。矢印キー/WASD（画面の◀▶▲▼）でも歩けます。", "info");
   } else {
     // 現地モード: iOS Safari の DeviceOrientation 許可はユーザータップ内でのみ取得可能。
     // startAR は必ず「ARを開始」ボタンの click ハンドラから呼ぶこと。
@@ -701,13 +755,13 @@ export async function startAR(holder,
     const c = data?.position?.coords ?? data?.coords;
     if (!c) return;
     curPos = { lat: c.latitude, lng: c.longitude };
-    if (mode === "sim") {
-      // 検証モード: 初回に歩ける3D世界を構築（GPS原点＝ENU基準）
+    if (mode === "sim" || mode === "learn") {
+      // 歩ける3D世界を初回構築（GPS原点＝ENU基準）
       if (!simBuilt) {
         simOrigin = { ...curPos };
         camera.position.set(0, EYE_Y, 0);
-        buildSimWorld();
-        faceTarget(); // 初期は避難先を正面に
+        if (mode === "learn") buildLearnWorld(); else buildSimWorld();
+        faceTarget(); // 初期は主役（避難先 or 伝承）を正面に
       }
     } else {
       refreshTarget();
@@ -736,7 +790,7 @@ export async function startAR(holder,
   renderer.setAnimationLoop(() => {
     if (controls) controls.update();
     if (lookControls) lookControls.update();
-    if (mode === "sim" && guideArrow) updateGuideArrow(); // 見回しでも矢印を追従
+    if (guideArrow) updateGuideArrow(); // simの見回しで矢印を追従（learnはguideArrow無し）
     renderer.render(scene, camera);
   });
 
@@ -769,7 +823,7 @@ export function stopAR() {
   arrowGroup = null; targetBoard = null;
   traditionObjs = []; traditionsBuiltAt = null; curPos = null;
   simWorld = null; guideArrow = null; simOrigin = null; simBuilt = false;
-  routeGeom = null;
+  routeGeom = null; focusTradition = null;
 }
 
 // 検証モードの移動操作API（画面ボタン用）

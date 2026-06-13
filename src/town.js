@@ -130,9 +130,16 @@ export function buildTownGroup(town, origin, groundY) {
     return [east, -north]; // 世界座標は 北=-Z / 東=+X（CLAUDE.md）
   };
 
-  // 建物: footprint押し出しを1メッシュに結合（頂点色＋Lambertの陰影で立体感）
+  // 建物: footprint押し出しを1メッシュに結合（頂点色＋Lambertの陰影で立体感）。
+  // 市街地（清水港など）は建物数が多くビルドが重いので、近い順に上限を設けてフリーズを防ぐ。
+  const MAX_BUILDINGS = 1400;
+  const blds = town.buildings.length > MAX_BUILDINGS
+    ? town.buildings
+        .map((b) => { const [x, z] = enu(b.pts[0][0], b.pts[0][1]); return { b, d: x * x + z * z }; })
+        .sort((p, q) => p.d - q.d).slice(0, MAX_BUILDINGS).map((x) => x.b)
+    : town.buildings;
   const geos = [];
-  for (const b of town.buildings) {
+  for (const b of blds) {
     const geo = footprintGeo(b.pts, b.h, enu);
     if (geo) { paint(geo, b.c); geos.push(geo); }
   }

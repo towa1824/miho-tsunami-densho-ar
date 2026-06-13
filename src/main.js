@@ -1,14 +1,14 @@
 // アプリ全体の制御: タブ切替・現在地(GPS/デモ)・地図・AR起動
 import "./style.css";
-import { demoLocations, facilityById, nearestTradition } from "./data.js";
+import { demoLocations, facilityById, traditionById, nearestTradition } from "./data.js";
 import * as MapView from "./map.js";
 import * as AR from "./ar.js";
 import { initMiniMap, drawMiniMap } from "./minimap.js";
 import {
   renderFacilitiesTab, renderTraditionsTab, renderArTab, renderAboutTab,
-  arOverlayHtml,
+  arOverlayHtml, learnOverlayHtml,
 } from "./ui.js";
-import { distanceM, bearingDeg, travelTimeMin, formatDuration, formatDist, TRAVEL_LABEL } from "./geo.js";
+import { distanceM, bearingDeg, destPoint, travelTimeMin, formatDuration, formatDist, TRAVEL_LABEL } from "./geo.js";
 
 const state = {
   pos: null,        // {lat,lng}
@@ -22,6 +22,7 @@ const state = {
   travelMode: "foot",   // 徒歩 / 車（F-09）
   routedFacilityId: null,
   routeGeometry: null,  // OSRMの経路形状（現地目線ビューの道筋描画に渡す）
+  learnTradition: null, // 伝承学習ビューで深掘り中の伝承
 };
 let arStatusMsg = "";
 let headingTimer = null;
@@ -57,6 +58,7 @@ const handlers = {
   onPanTo: (lat, lng) => MapView.focusLatLng(lat, lng),
   onStartAR: (f) => startAR(f),
   onSetArMode: (m) => { state.arMode = m; if (state.tab === "ar") renderActiveTab(); },
+  onLearnTradition: (id) => startLearnAR(traditionById(id)),
 };
 
 // ---- 現在地 ----
@@ -160,9 +162,9 @@ function showRouteSummary(f, r, loading) {
   // 距離: OSRM経路があれば道路距離、無ければ直線距離
   const straight = distanceM(state.pos.lat, state.pos.lng, f.lat, f.lng);
   const distM = r && r.distM != null ? r.distM : straight;
-  // 時間: 徒歩=距離/80, 車=OSRM duration（無ければ概算）
+  // 時間: OSRMのduration（徒歩=footプロファイル, 車=carプロファイル）。直線時のみ概算。
   let min;
-  if (state.travelMode === "car" && r && r.durS != null) min = Math.max(1, Math.round(r.durS / 60));
+  if (r && r.durS != null) min = Math.max(1, Math.round(r.durS / 60));
   else min = travelTimeMin(distM, state.travelMode);
   const via = r && r.mode === "straight" ? "（直線参考・道路経路は取得できず）"
     : r && r.mode === "osrm" ? "（道路距離）" : "";
@@ -234,6 +236,7 @@ async function startAR(facility) {
   el.arSimControls.hidden = state.arMode !== "sim";
   el.arDpad.hidden = state.arMode !== "sim";
   el.arAttrib.hidden = state.arMode !== "sim";
+  el.arFaceBtn.textContent = "🎯 避難先を正面に";
   AR.setOnUpdate(() => { updateArOverlay(); updateHeadingHud(); });
   AR.setOnStatus((msg) => setArStatus(msg));
   updateArOverlay();
@@ -255,15 +258,49 @@ async function startAR(facility) {
   }
 }
 
+// 伝承学習ビューを開く（避難ナビとは切り離し、選んだ伝承スポットを深掘り）
+async function startLearnAR(t) {
+  if (!t || t.lat == null) return;
+  state.learnTradition = t;
+  arStatusMsg = "";
+  el.arView.hidden = false;
+  el.arSimControls.hidden = false; // 見回し・出発地点へ戻る
+  el.arDpad.hidden = false;        // 歩いて移動
+  el.arAttrib.hidden = false;      // OSM出典
+  el.arFaceBtn.textContent = "📜 伝承を正面に";
+  AR.setOnUpdate(() => { updateLearnOverlay(); updateHeadingHud(); });
+  AR.setOnStatus((msg) => setArStatus(msg));
+  updateLearnOverlay();
+  try {
+    // 伝承スポットの少し手前（南25m）に立って、正面にスポットを見る
+    const stand = destPoint(t.lat, t.lng, 180, 25);
+    await AR.startAR(el.arHolder, { fakePos: stand, mode: "learn", tradition: t });
+    clearInterval(headingTimer);
+    headingTimer = setInterval(updateHeadingHud, 200);
+  } catch (e) {
+    el.arOverlay.innerHTML =
+      `<div class="arInfoCard">学習ビューを開始できませんでした。<br><small>${String(e)}</small></div>`;
+  }
+}
+
+function updateLearnOverlay() {
+  const t = state.learnTradition;
+  if (!t) return;
+  const statusHtml = arStatusMsg
+    ? `<div class="arInfoCard" style="margin-bottom:6px;background:rgba(255,243,224,.95)">${arStatusMsg}</div>` : "";
+  el.arOverlay.innerHTML = statusHtml + learnOverlayHtml(t);
+}
+
 function updateHeadingHud() {
   const h = AR.currentHeading();
-  const f = state.selected;
+  const learning = AR.isStarted() && AR.getMode() === "learn";
+  const f = learning ? state.learnTradition : state.selected;
   const pos = (AR.isStarted() && AR.effectivePos()) || state.pos;
-  // ミニマップ: 現在位置・向き・目的地を更新（liveで方位が取れない時は向き扇形なし）
-  if (AR.isStarted() && pos) drawMiniMap(pos, h, f);
+  // ミニマップ: 学習時は目的地線を出さず、周辺の伝承・施設だけ表示
+  if (AR.isStarted() && pos) drawMiniMap(pos, h, learning ? null : f);
   if (h == null) { el.arHeading.textContent = ""; return; }
   let tgt = "";
-  if (f && pos && f.lat != null) {
+  if (!learning && f && pos && f.lat != null) {
     const b = bearingDeg(pos.lat, pos.lng, f.lat, f.lng);
     const diff = Math.round(((b - h + 540) % 360) - 180);
     const aligned = Math.abs(diff) < 8;
@@ -272,8 +309,8 @@ function updateHeadingHud() {
       `　${f.name}は ${diff > 0 ? "右" : "左"}へ ${Math.abs(diff)}°・あと ${Math.round(dist)}m`;
   }
   el.arHeading.innerHTML = `方位 <b>${Math.round(h)}°</b>${tgt}`;
-  // 歩行中はオーバーレイの距離も更新
-  updateArOverlay();
+  // 歩行中はオーバーレイも更新
+  if (learning) updateLearnOverlay(); else updateArOverlay();
 }
 
 function exitAR() {
@@ -285,6 +322,7 @@ function exitAR() {
   el.arAttrib.hidden = true;
   el.arOverlay.innerHTML = "";
   el.arHeading.textContent = "";
+  state.learnTradition = null;
   MapView.invalidate();
 }
 

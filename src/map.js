@@ -161,20 +161,26 @@ export function focusLatLng(lat, lng) {
   if (nearest && best < 1e-4) nearest.openPopup();
 }
 
-// 経路表示: OSRMで道路経路を取得。travelMode("foot"/"car")で線色を変える。
-// ※公開OSRMサーバは車プロファイルのみ稼働のため経路の道筋は両モードで同じ。
-//   所要時間は呼び出し側で徒歩=距離/80, 車=OSRM durationと出し分ける（geo.js）。
+// 経路表示: OSRM(routing.openstreetmap.de)で道路経路を取得。
+// travelMode で道筋が変わる: 徒歩=foot（歩行者の道・近道）、車=car（車道）。
+//   徒歩プロファイルは車道だけの経路より避難の実態に近い（三保の例で約1.8km→約1.0kmに短縮）。
+//   所要時間はOSRMのduration（徒歩/車とも）。直線フォールバック時のみ geo.js の概算。
 const ROUTE_COLOR = { foot: "#0d47a1", car: "#c62828" };
+const OSRM_PROFILE = {
+  foot: "routed-foot/route/v1/foot",   // 歩行者ネットワーク（避難の主動線）
+  car: "routed-car/route/v1/driving",  // 車道（車での避難・搬送の参考）
+};
 
 export async function showRoute(pos, facility, travelMode = "foot") {
   clearRoute();
   if (!hasPos(facility)) return { mode: "none" };
+  const profile = OSRM_PROFILE[travelMode] ?? OSRM_PROFILE.foot;
   const url =
-    `https://router.project-osrm.org/route/v1/driving/` +
+    `https://routing.openstreetmap.de/${profile}/` +
     `${pos.lng},${pos.lat};${facility.lng},${facility.lat}` +
     `?overview=full&geometries=geojson`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     const json = await res.json();
     const route = json.routes?.[0];
     if (route?.geometry) {

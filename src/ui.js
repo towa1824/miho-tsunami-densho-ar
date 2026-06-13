@@ -95,7 +95,10 @@ export function renderTraditionsTab(el, pos, handlers) {
       <div class="why" style="border-left-color:#ef6c00;background:#fff7ef">避難行動への意味づけ: ${esc(t.evacuation_message)}</div>
       <div class="caution">${esc(t.caution)}</div>
       ${srcHtml(t)}
-      ${hasPos(t) ? `<div class="btnRow"><button data-act="mapt" data-lat="${t.lat}" data-lng="${t.lng}">地図で見る</button></div>` : ""}
+      ${hasPos(t) ? `<div class="btnRow">
+        <button data-act="mapt" data-lat="${t.lat}" data-lng="${t.lng}">地図で見る</button>
+        <button data-act="learn" data-id="${esc(t.id)}" class="primary">🧭 ARで深く学ぶ</button>
+      </div>` : ""}
     </div>`;
   };
 
@@ -227,6 +230,7 @@ function bindActs(el, handlers) {
       if (act === "map") handlers.onShowRoute(b.dataset.id);
       if (act === "ar") handlers.onSelectAr(b.dataset.id);
       if (act === "mapt") handlers.onPanTo(+b.dataset.lat, +b.dataset.lng);
+      if (act === "learn") handlers.onLearnTradition(b.dataset.id);
     });
   });
 }
@@ -243,5 +247,21 @@ export function arOverlayHtml(f, dist, t, travelMode = "foot") {
     <span style="color:#0d47a1">理由: ${esc(f.why)}</span>
     ${t ? `<div class="caution" style="margin-top:4px">📜 ${esc(t.title)}（約${formatDist(t._dist)}）
       — 伝承・史料は補助情報です。避難判断は公式情報に従ってください。</div>` : ""}
+  </div>`;
+}
+
+// 伝承学習ビューの下部オーバーレイ（当時の状況・教訓・出典をじっくり読む）
+export function learnOverlayHtml(t) {
+  const ht = t.recorded_height_m != null
+    ? `<span class="chip">🌊 記録 約${esc(t.recorded_height_m)}m</span>` : "";
+  const inten = t.intensity != null
+    ? `<span class="chip">推定震度 ${t.intensity === 6.5 ? "6〜7" : esc(t.intensity)}</span>` : "";
+  return `<div class="arLearnCard">
+    <h3>📜 ${esc(t.title)}</h3>
+    <div class="learnChips">${esc(t.disaster)}${ht}${inten}</div>
+    <div class="learnBody">${esc(t.summary)}</div>
+    <div class="why" style="border-left-color:#ef6c00;background:#fff7ef">🧭 避難への意味づけ: ${esc(t.evacuation_message)}</div>
+    <div class="caution">${esc(t.caution)}</div>
+    ${srcHtml(t)}
   </div>`;
 }
