@@ -36,9 +36,13 @@ const GROUND_Y = EYE_Y - 1.5;
 const GUIDE_Y = EYE_Y - 1.15; // ガイド矢印の高さ。目線より下げて町並みの視界を塞がない
 let simOrigin = null;       // GPS原点 {lat,lng}（ENUの基準）
 let simWorld = null;        // 建物・看板・地面などをまとめるGroup
-let guideArrow = null;      // カメラに追従して目的地を指す浮遊矢印
+let guideArrow = null;      // カメラに追従して「次に進む方向」を指す浮遊矢印
 let simBuilt = false;
 let routeGeom = null;       // OSRM経路形状(GeoJSON LineString)。あれば道筋をこれに沿わせる
+let routeGroup = null;      // 経路の3Dオブジェクト（青ルート or 灰破線）をまとめるGroup
+let routeENU = [];          // 経路点のENU列 [{x,z}]（道路経路がある時はその形状、無ければ[原点,目的地]）
+let routeHasRoad = false;   // 道路経路あり(true) / 直線参考のみ(false)
+let routeTotalM = 0;        // 経路全長(m)
 
 // ENU(東/北 メートル)でオブジェクトを配置（北=-Z, 東=+X）
 function placeENU(obj, lat, lng, y = 0) {
@@ -76,6 +80,21 @@ export function faceTarget() {
 }
 export function faceNorth() {
   if (lookControls) lookControls.reset();
+}
+// 経路の「次に進む方向」を正面に向ける（道路経路があれば最初の進行方向、無ければ目的地方向）
+export function faceRoute() {
+  if (!lookControls) return;
+  if (mode === "sim" && routeHasRoad && routeENU.length >= 2) {
+    const ns = nextStep();
+    const eff = effectiveLatLng();
+    if (ns && eff) { lookControls.faceBearing(ns.brg); return; }
+  }
+  faceTarget();
+}
+// 「正面に」ボタン用: モードに応じて経路方向 or 主役（伝承）を向く
+export function faceGuide() {
+  if (mode === "learn") return faceTarget();
+  return faceRoute();
 }
 
 // ズーム（望遠）: FOVを狭めて遠くのものを拡大する。zoom=1で標準70°、最大約3.5倍
@@ -316,80 +335,154 @@ function signboard(t) {
   return grp;
 }
 
-// 目的地までの道筋（地面のストリップ＋シェブロン＋距離マーカー）
-// OSRMの経路形状(routeGeom)があれば道なりに、無ければ直線で描く。
-function buildRoutePath(g, tLat, tLng) {
-  const pts = routePoints(tLat, tLng);
-  if (import.meta.env?.DEV) {
-    window.__arRouteMode = pts.length > 2 ? "geometry" : "straight";
+// 経路の3D表現を（再）構築する。routeGeom(OSRM道路経路)があれば青ルート、
+// 無ければ「目的地方向（直線参考）」を灰色破線で描く（青い道路風ルートは出さない）。
+function buildRoute() {
+  if (!routeGroup || !simOrigin) return;
+  while (routeGroup.children.length) {
+    const c = routeGroup.children.pop();
+    c.geometry?.dispose?.();
   }
-  if (pts.length < 2) return;
+  routeENU = []; routeHasRoad = false; routeTotalM = 0;
+  if (!target || target.lat == null) return;
 
-  const W = 2.2;
-  // 経路はGoogleマップのナビ風に「青い帯＋白いシェブロン」で、道筋の位置をはっきり示す
-  const stripMat = new THREE.MeshBasicMaterial({
-    color: 0x1a73e8, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
-  let acc = 0;            // 道なり累計距離
-  let nextChev = 16;      // 次のシェブロン位置（足元すぐは置かない）
-  let nextLab = 60;       // 次の「あと◯m」位置
-  const total = pathLength(pts);
-
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1], b = pts[i];
-    const dx = b.x - a.x, dz = b.z - a.z;
-    const seg = Math.hypot(dx, dz);
-    if (seg < 0.3) continue;
-    const ux = dx / seg, uz = dz / seg;
-    const px = -uz, pz = ux; // 幅方向
-    // 区間ごとのストリップ
-    const verts = new Float32Array([
-      a.x + px * W, GROUND_Y + 0.03, a.z + pz * W,
-      a.x - px * W, GROUND_Y + 0.03, a.z - pz * W,
-      b.x + px * W, GROUND_Y + 0.03, b.z + pz * W,
-      b.x - px * W, GROUND_Y + 0.03, b.z - pz * W,
-    ]);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(verts, 3));
-    geo.setIndex([0, 1, 2, 1, 3, 2]);
-    const strip = new THREE.Mesh(geo, stripMat);
-    strip.renderOrder = 1; // 町並みの道路・緑地レイヤーより前面に
-    g.add(strip);
-    // シェブロン（道なり約22m間隔・進行方向を向ける）。青帯の上に白でナビ感を出す
-    const rotY = Math.atan2(ux, uz);
-    while (nextChev <= acc + seg && nextChev < total - 4) {
-      const t = (nextChev - acc) / seg;
-      const chev = makeChevron(0xffffff);
-      chev.position.set(a.x + dx * t, GROUND_Y + 0.06, a.z + dz * t);
-      chev.rotation.y = rotY;
-      g.add(chev);
-      nextChev += 22;
-    }
-    // 「あと◯m」マーカー（道なり約60m間隔）
-    while (nextLab <= acc + seg && nextLab < total - 10) {
-      const t = (nextLab - acc) / seg;
-      const lab = makeTextSprite(
-        [{ text: `あと ${Math.round(total - nextLab)}m`, bold: true, size: 24, color: "#0d47a1" }],
-        { accent: "#1a73e8", width: 220 });
-      lab.position.set(a.x + dx * t, GROUND_Y + 1.4, a.z + dz * t);
-      g.add(lab);
-      nextLab += 60;
-    }
-    acc += seg;
-  }
-}
-
-// 道筋の頂点列(ENU)。routeGeomがあればその形状、無ければ[原点→目的地]の直線。
-function routePoints(tLat, tLng) {
   const coords = routeGeom?.coordinates;
   if (Array.isArray(coords) && coords.length >= 2) {
-    return coords.map(([lng, lat]) => {
+    routeENU = coords.map(([lng, lat]) => {
       const { east, north } = toEastNorth(lat, lng, simOrigin.lat, simOrigin.lng);
       return { x: east, z: -north };
     });
+    routeHasRoad = true;
+  } else {
+    const { east, north } = toEastNorth(target.lat, target.lng, simOrigin.lat, simOrigin.lng);
+    routeENU = [{ x: 0, z: 0 }, { x: east, z: -north }];
+    routeHasRoad = false;
   }
-  const { east, north } = toEastNorth(tLat, tLng, simOrigin.lat, simOrigin.lng);
-  return [{ x: 0, z: 0 }, { x: east, z: -north }];
+  routeTotalM = pathLength(routeENU);
+  if (import.meta.env?.DEV) window.__arRouteMode = routeHasRoad ? "geometry" : "straight";
+
+  if (routeHasRoad) drawRoadRoute(routeGroup);
+  else drawStraightRef(routeGroup);
 }
+
+// 道路経路（青）: 太い帯ではなく細い半透明ライン＋明るい中心線＋小さな白シェブロン。
+// 経路始点が原点から離れている場合は、原点→経路始点を灰破線でつなぐ（道路への取り付き）。
+function drawRoadRoute(g) {
+  const pts = routeENU;
+  const W = 0.7;                 // 帯の半幅（全幅1.4m）
+  const y = GROUND_Y + 0.04;
+  const fillMat = new THREE.MeshBasicMaterial({
+    color: 0x1a73e8, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
+  const pos = [], core = [];
+  let acc = 0, nextChev = 14;
+  const total = routeTotalM;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const dx = b.x - a.x, dz = b.z - a.z, seg = Math.hypot(dx, dz);
+    if (seg < 0.2) continue;
+    const ux = dx / seg, uz = dz / seg, px = -uz, pz = ux;
+    pos.push(
+      a.x + px * W, y, a.z + pz * W, a.x - px * W, y, a.z - pz * W, b.x + px * W, y, b.z + pz * W,
+      a.x - px * W, y, a.z - pz * W, b.x - px * W, y, b.z - pz * W, b.x + px * W, y, b.z + pz * W);
+    core.push(new THREE.Vector3(a.x, y + 0.01, a.z), new THREE.Vector3(b.x, y + 0.01, b.z));
+    const rotY = Math.atan2(ux, uz);
+    while (nextChev <= acc + seg && nextChev < total - 3) {
+      const t = (nextChev - acc) / seg;
+      const chev = makeChevron(0xffffff); chev.scale.setScalar(0.66);
+      chev.position.set(a.x + dx * t, y + 0.03, a.z + dz * t); chev.rotation.y = rotY;
+      g.add(chev); nextChev += 24;
+    }
+    acc += seg;
+  }
+  if (pos.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+    const mesh = new THREE.Mesh(geo, fillMat); mesh.renderOrder = 1; g.add(mesh);
+  }
+  if (core.length) {
+    const cgeo = new THREE.BufferGeometry().setFromPoints(core);
+    const line = new THREE.LineSegments(cgeo,
+      new THREE.LineBasicMaterial({ color: 0x4aa3ff, transparent: true, opacity: 0.9 }));
+    line.renderOrder = 2; g.add(line);
+  }
+  // 原点が経路始点から離れている（公園内など）場合の取り付き線
+  const start = pts[0];
+  if (Math.hypot(start.x, start.z) > 8) g.add(dashedLine({ x: 0, z: 0 }, start, y, 0x9e9e9e, 0.8));
+}
+
+// 直線参考（道路経路が取れない時）: 灰色の破線で「目的地方向」だけを控えめに示す。
+function drawStraightRef(g) {
+  const a = routeENU[0], b = routeENU[routeENU.length - 1];
+  const y = GROUND_Y + 0.04;
+  g.add(dashedLine(a, b, y, 0x9e9e9e, 0.85));
+  const mid = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+  const lab = makeTextSprite(
+    [{ text: "目的地方向（直線参考・道路経路なし）", bold: true, size: 22, color: "#5f6368" }],
+    { accent: "#9e9e9e", width: 460 });
+  lab.position.set(mid.x, GROUND_Y + 1.6, mid.z);
+  g.add(lab);
+}
+
+function dashedLine(a, b, y, color, opacity) {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(a.x, y, a.z), new THREE.Vector3(b.x, y, b.z)]);
+  const line = new THREE.Line(geo, new THREE.LineDashedMaterial({
+    color, dashSize: 2.5, gapSize: 2, transparent: true, opacity }));
+  line.computeLineDistances();
+  line.renderOrder = 1;
+  return line;
+}
+
+// 現在のカメラ位置から経路上の最近点・前方の目標点・残距離を求める（経路追従）
+function routeProgress() {
+  if (!routeENU || routeENU.length < 2 || !camera) return null;
+  const p = camera.position;
+  let bestD = Infinity, bestI = 1, bestT = 0;
+  for (let i = 1; i < routeENU.length; i++) {
+    const a = routeENU[i - 1], b = routeENU[i];
+    const dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz || 1e-9;
+    let t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + dx * t, cz = a.z + dz * t, d = (p.x - cx) ** 2 + (p.z - cz) ** 2;
+    if (d < bestD) { bestD = d; bestI = i; bestT = t; }
+  }
+  const a0 = routeENU[bestI - 1], b0 = routeENU[bestI];
+  const projx = a0.x + (b0.x - a0.x) * bestT, projz = a0.z + (b0.z - a0.z) * bestT;
+  let remaining = Math.hypot(b0.x - projx, b0.z - projz);
+  for (let i = bestI + 1; i < routeENU.length; i++) {
+    remaining += Math.hypot(routeENU[i].x - routeENU[i - 1].x, routeENU[i].z - routeENU[i - 1].z);
+  }
+  return { target: lookAheadPoint(bestI, projx, projz, 12), remaining };
+}
+
+// 経路上の (px,pz)（セグメントsegI上）から道なりに dist[m] 進んだ点
+function lookAheadPoint(segI, px, pz, dist) {
+  let remain = dist, curx = px, curz = pz, i = segI;
+  while (i < routeENU.length) {
+    const b = routeENU[i];
+    const dx = b.x - curx, dz = b.z - curz, seg = Math.hypot(dx, dz);
+    if (seg >= remain) { const t = remain / seg; return { x: curx + dx * t, z: curz + dz * t }; }
+    remain -= seg; curx = b.x; curz = b.z; i++;
+  }
+  return { x: curx, z: curz };
+}
+
+// HUD/オーバーレイ用: 次に進む方位(地理)・そこまでの距離・経路の残距離
+export function nextStep() {
+  if (mode !== "sim") return null;
+  const eff = effectiveLatLng();
+  if (!target || target.lat == null || !eff) return null;
+  if (!routeHasRoad || routeENU.length < 2) {
+    const dist = distanceM(eff.lat, eff.lng, target.lat, target.lng);
+    return { hasRoute: false, brg: bearingDeg(eff.lat, eff.lng, target.lat, target.lng), dist, remaining: dist };
+  }
+  const pr = routeProgress();
+  if (!pr) return null;
+  const tll = fromEastNorth(pr.target.x, -pr.target.z, simOrigin.lat, simOrigin.lng);
+  const nextDist = Math.hypot(pr.target.x - camera.position.x, pr.target.z - camera.position.z);
+  return { hasRoute: true, brg: bearingDeg(eff.lat, eff.lng, tll.lat, tll.lng), dist: nextDist, remaining: pr.remaining };
+}
+export function hasRoadRoute() { return routeHasRoad; }
 
 function pathLength(pts) {
   let len = 0;
@@ -441,8 +534,10 @@ function buildSimWorld() {
     g.add(s);
   }
 
-  // 目的地への道筋
-  if (target && target.lat != null) buildRoutePath(g, target.lat, target.lng);
+  // 目的地への道筋（道路経路=青ルート / 取得不可=灰破線の直線参考）
+  routeGroup = new THREE.Group();
+  g.add(routeGroup);
+  buildRoute();
 
   scene.add(g);
   simWorld = g;
@@ -522,7 +617,8 @@ async function addTownAsync(world) {
   }
 }
 
-// ガイド矢印をカメラ前方の足元寄りに置き、目的地（実位置）へ向ける
+// ガイド矢印をカメラ前方の足元寄りに置き、「次に進む方向」（経路の前方点）へ向ける。
+// 道路経路がある時は次の経路点、無ければ目的地（直線）を指す。
 function updateGuideArrow() {
   if (!guideArrow || !target || target.lat == null) return;
   guideArrow.visible = zoom <= 1.5; // 望遠中は視界を塞ぐだけなので隠す
@@ -531,19 +627,22 @@ function updateGuideArrow() {
   const yaw = lookControls ? lookControls.yaw : 0;
   // カメラ前方7m・目線より下に配置（町並みの視界を塞がない）
   guideArrow.position.set(cam.x - Math.sin(yaw) * 7, GUIDE_Y, cam.z - Math.cos(yaw) * 7);
-  const { east, north } = toEastNorth(target.lat, target.lng, simOrigin.lat, simOrigin.lng);
-  guideArrow.lookAt(east, GUIDE_Y, -north);
+  let tx, tz;
+  if (routeHasRoad && routeENU.length >= 2) {
+    const pr = routeProgress();
+    if (pr) { tx = pr.target.x; tz = pr.target.z; }
+  }
+  if (tx === undefined) {
+    const { east, north } = toEastNorth(target.lat, target.lng, simOrigin.lat, simOrigin.lng);
+    tx = east; tz = -north;
+  }
+  guideArrow.lookAt(tx, GUIDE_Y, tz);
 }
 
-// 歩いて移動した時: 実効現在地で距離・方向を更新し、ガイド矢印を向け直す
+// 歩いて移動した時: ガイド矢印を向け直し、HUD/オーバーレイを更新させる
 function onSimMove() {
   updateGuideArrow();
-  if (mode === "learn") { if (onUpdateCb) onUpdateCb({ learn: true }); return; }
-  if (!target || target.lat == null) return;
-  const eff = effectiveLatLng();
-  const dist = distanceM(eff.lat, eff.lng, target.lat, target.lng);
-  const brg = bearingDeg(eff.lat, eff.lng, target.lat, target.lng);
-  if (onUpdateCb) onUpdateCb({ dist, brg, eff });
+  if (onUpdateCb) onUpdateCb({});
 }
 
 function placeAt(obj, lat, lng, y = 0) {
@@ -760,8 +859,8 @@ export async function startAR(holder,
       if (!simBuilt) {
         simOrigin = { ...curPos };
         camera.position.set(0, EYE_Y, 0);
-        if (mode === "learn") buildLearnWorld(); else buildSimWorld();
-        faceTarget(); // 初期は主役（避難先 or 伝承）を正面に
+        if (mode === "learn") { buildLearnWorld(); faceTarget(); }
+        else { buildSimWorld(); faceRoute(); } // 初期は経路の最初の進行方向を正面に
       }
     } else {
       refreshTarget();
@@ -824,6 +923,7 @@ export function stopAR() {
   traditionObjs = []; traditionsBuiltAt = null; curPos = null;
   simWorld = null; guideArrow = null; simOrigin = null; simBuilt = false;
   routeGeom = null; focusTradition = null;
+  routeGroup = null; routeENU = []; routeHasRoad = false; routeTotalM = 0;
 }
 
 // 検証モードの移動操作API（画面ボタン用）
@@ -831,5 +931,5 @@ export function setMoveInput(forward, strafe) {
   if (lookControls) lookControls.setMoveInput(forward, strafe);
 }
 export function resetWalk() {
-  if (lookControls) { lookControls.resetPosition(); faceTarget(); }
+  if (lookControls) { lookControls.resetPosition(); faceGuide(); }
 }

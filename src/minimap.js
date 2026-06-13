@@ -26,7 +26,7 @@ function applySize() {
   ctx.setTransform(2, 0, 0, 2, 0, 0);
 }
 
-export function drawMiniMap(pos, headingDeg, target, discoveredSet) {
+export function drawMiniMap(pos, headingDeg, target, routeGeometry, discoveredSet) {
   if (!ctx || !pos) return;
   const R = size / 2;
   // 表示範囲: 目的地が収まるよう自動調整
@@ -57,10 +57,21 @@ export function drawMiniMap(pos, headingDeg, target, discoveredSet) {
     ctx.beginPath(); ctx.arc(R, R, range * sc * f, 0, Math.PI * 2); ctx.stroke();
   }
 
-  // 目的地への道筋（青の破線。AR空間の青い経路帯と色を揃える）
-  if (target && target.lat != null) {
+  // 経路: 道路経路(routeGeometry)があれば実経路のポリライン(青・実線)、
+  // 無ければ目的地への直線を灰色破線（直線参考）で描く。
+  const coords = routeGeometry?.coordinates;
+  if (Array.isArray(coords) && coords.length >= 2) {
+    ctx.strokeStyle = "#1a73e8"; ctx.lineWidth = 2.8; ctx.setLineDash([]);
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    coords.forEach(([lng, lat], i) => {
+      const [x, y] = toXY(lat, lng);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  } else if (target && target.lat != null) {
     const [tx, ty] = toXY(target.lat, target.lng);
-    ctx.strokeStyle = "#1a73e8"; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = "rgba(160,160,160,.9)"; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
     ctx.beginPath(); ctx.moveTo(R, R); ctx.lineTo(tx, ty); ctx.stroke();
     ctx.setLineDash([]);
   }

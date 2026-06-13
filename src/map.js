@@ -171,9 +171,10 @@ const OSRM_PROFILE = {
   car: "routed-car/route/v1/driving",  // 車道（車での避難・搬送の参考）
 };
 
-export async function showRoute(pos, facility, travelMode = "foot") {
-  clearRoute();
-  if (!hasPos(facility)) return { mode: "none" };
+// 道路経路をOSRMから取得するだけの純関数（地図には描かない）。
+// AR起動・経路サマリの両方から使い、{ mode, geometry, distM, durS } を返す。
+export async function fetchRoute(pos, facility, travelMode = "foot") {
+  if (!pos || !hasPos(facility)) return { mode: "none" };
   const profile = OSRM_PROFILE[travelMode] ?? OSRM_PROFILE.foot;
   const url =
     `https://routing.openstreetmap.de/${profile}/` +
@@ -184,22 +185,30 @@ export async function showRoute(pos, facility, travelMode = "foot") {
     const json = await res.json();
     const route = json.routes?.[0];
     if (route?.geometry) {
-      routeLine = L.geoJSON(route.geometry, {
-        style: { color: ROUTE_COLOR[travelMode] ?? "#0d47a1", weight: 5, opacity: 0.85 },
-      }).addTo(map);
-      addDirectionArrows(route.geometry, ROUTE_COLOR[travelMode] ?? "#0d47a1");
-      map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
-      // geometry(GeoJSON LineString)は現地目線ビューの道筋描画にも使う
-      return { mode: "osrm", distM: route.distance, durS: route.duration,
-               geometry: route.geometry };
+      return { mode: "osrm", geometry: route.geometry, distM: route.distance, durS: route.duration };
     }
-  } catch { /* OSRM不達時は直線にフォールバック */ }
+  } catch { /* OSRM不達 → 直線フォールバック */ }
+  return { mode: "straight" };
+}
+
+export async function showRoute(pos, facility, travelMode = "foot") {
+  clearRoute();
+  if (!hasPos(facility)) return { mode: "none" };
+  const r = await fetchRoute(pos, facility, travelMode);
+  if (r.mode === "osrm") {
+    routeLine = L.geoJSON(r.geometry, {
+      style: { color: ROUTE_COLOR[travelMode] ?? "#0d47a1", weight: 5, opacity: 0.85 },
+    }).addTo(map);
+    addDirectionArrows(r.geometry, ROUTE_COLOR[travelMode] ?? "#0d47a1");
+    map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
+    return r; // { mode, geometry, distM, durS }
+  }
+  // 経路取得不可 → 直線を「参考」として灰色破線で描く
   routeLine = L.polyline(
     [[pos.lat, pos.lng], [facility.lat, facility.lng]],
     { color: "#666", weight: 3, dashArray: "6 8" }
   ).addTo(map).bindTooltip("直線参考（経路計算不可）");
   map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
-  // 直線距離は呼び出し側のstraight扱いで時間計算
   return { mode: "straight", distM: null };
 }
 

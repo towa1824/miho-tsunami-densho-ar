@@ -33,6 +33,7 @@
       <div id="arCanvasHolder"></div>
       <div id="arHeading"></div>
       <div id="arAttrib" hidden>町並み・地図 © OpenStreetMap contributors</div>
+      <div id="arToast" hidden></div>
       <div id="arZoom">
         <button id="arZoomIn" type="button" aria-label="拡大">＋</button>
         <button id="arZoomOut" type="button" aria-label="縮小">－</button>
@@ -40,9 +41,9 @@
       <canvas id="arMiniMap" aria-label="ミニマップ"></canvas>
       <div id="arOverlay"></div>
       <div id="arSimControls" hidden>
-        <button id="arFaceBtn" type="button">🎯 避難先を正面に</button>
-        <button id="arResetBtn" type="button">🧭 北を正面に</button>
-        <button id="arWalkResetBtn" type="button">↩ 出発地点へ戻る</button>
+        <button id="arFaceBtn" type="button">🎯 進行方向</button>
+        <button id="arResetBtn" type="button">🧭 北</button>
+        <button id="arWalkResetBtn" type="button">↩ 出発点へ</button>
       </div>
       <div id="arDpad" hidden>
         <button data-move="F" type="button" aria-label="前進">▲</button>
@@ -52,7 +53,7 @@
         </div>
         <button data-move="B" type="button" aria-label="後退">▼</button>
       </div>
-      <button id="arExit" type="button">✕ 終了して地図へ</button>
+      <button id="arExit" type="button">✕ 終了</button>
     </div>
   </main>
 

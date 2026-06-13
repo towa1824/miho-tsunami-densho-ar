@@ -8,7 +8,7 @@ import {
   renderFacilitiesTab, renderTraditionsTab, renderArTab, renderAboutTab,
   arOverlayHtml, learnOverlayHtml,
 } from "./ui.js";
-import { distanceM, bearingDeg, destPoint, travelTimeMin, formatDuration, formatDist, TRAVEL_LABEL } from "./geo.js";
+import { distanceM, bearingDeg, destPoint, compassLabel, travelTimeMin, formatDuration, formatDist, TRAVEL_LABEL } from "./geo.js";
 
 const state = {
   pos: null,        // {lat,lng}
@@ -22,9 +22,11 @@ const state = {
   travelMode: "foot",   // 徒歩 / 車（F-09）
   routedFacilityId: null,
   routeGeometry: null,  // OSRMの経路形状（現地目線ビューの道筋描画に渡す）
+  arRoute: null,        // AR起動時に確保した道路経路 { mode, geometry, distM, durS }
   learnTradition: null, // 伝承学習ビューで深掘り中の伝承
 };
 let arStatusMsg = "";
+let navExpanded = false; // ナビカードの展開状態（折りたたみ）
 let headingTimer = null;
 
 const el = {
@@ -41,6 +43,7 @@ const el = {
   arOverlay: document.getElementById("arOverlay"),
   arExit: document.getElementById("arExit"),
   arAttrib: document.getElementById("arAttrib"),
+  arToast: document.getElementById("arToast"),
   arSimControls: document.getElementById("arSimControls"),
   arHeading: document.getElementById("arHeading"),
   arFaceBtn: document.getElementById("arFaceBtn"),
@@ -197,17 +200,35 @@ function onTravelChange(mode) {
 function updateArOverlay() {
   if (!state.selected) return;
   const f = state.selected;
-  // 歩いて移動した後は実効現在地で距離を出す（AR.effectivePos）
+  const r = state.arRoute || { mode: "straight" };
+  const ns = AR.isStarted() ? AR.nextStep() : null;
+  let nextText = "";
+  if (ns) {
+    const dir = compassLabel(ns.brg);
+    nextText = ns.hasRoute ? `次は${dir}へ約${Math.round(ns.dist)}m` : `目的地は${dir}方向`;
+  }
+  const nav = {
+    mode: r.mode,
+    distM: r.distM ?? null,
+    durS: r.durS ?? null,
+    remainingM: ns?.remaining ?? r.distM ?? null,
+    nextText,
+  };
   const pos = (AR.isStarted() && AR.effectivePos()) || state.pos;
-  if (!pos) return;
-  const dist = distanceM(pos.lat, pos.lng, f.lat, f.lng);
-  const t = nearestTradition(pos);
-  const statusHtml = arStatusMsg
-    ? `<div class="arInfoCard" style="margin-bottom:6px;background:rgba(255,243,224,.95)">${arStatusMsg}</div>` : "";
-  el.arOverlay.innerHTML = statusHtml + arOverlayHtml(f, dist, t, state.travelMode);
+  const t = pos ? nearestTradition(pos) : null;
+  el.arOverlay.innerHTML = arOverlayHtml(f, nav, t, state.travelMode, navExpanded);
 }
 
-function setArStatus(msg) { arStatusMsg = msg; updateArOverlay(); }
+// 一時メッセージは上部トーストに出し、数秒で自動的に消す（下部のナビカード・操作に被らない）
+let toastTimer = null;
+function setArStatus(msg) {
+  arStatusMsg = msg;
+  if (!el.arToast) return;
+  el.arToast.textContent = msg || "";
+  el.arToast.hidden = !msg;
+  clearTimeout(toastTimer);
+  if (msg) toastTimer = setTimeout(() => { el.arToast.hidden = true; }, 5000);
+}
 
 // 画面D-padで歩く（押している間だけ移動）
 function setupDpad() {
@@ -231,22 +252,34 @@ function setupDpad() {
 async function startAR(facility) {
   state.selected = facility;
   arStatusMsg = "";
+  navExpanded = false;
   el.arView.hidden = false;
+  el.arView.classList.remove("navExpanded");
   // 検証モードの操作ボタン・移動D-pad・町並み(OSM)出典表示
   el.arSimControls.hidden = state.arMode !== "sim";
   el.arDpad.hidden = state.arMode !== "sim";
   el.arAttrib.hidden = state.arMode !== "sim";
-  el.arFaceBtn.textContent = "🎯 避難先を正面に";
+  el.arFaceBtn.textContent = "🎯 進行方向";
   AR.setOnUpdate(() => { updateArOverlay(); updateHeadingHud(); });
   AR.setOnStatus((msg) => setArStatus(msg));
-  updateArOverlay();
+  // 「現地目線で案内」から直接来ても、まず必ず道路経路を確保してからARを開く。
+  el.arOverlay.innerHTML = `<div class="arNavCard"><div class="arNavBody" style="display:block">経路を計算中…</div></div>`;
+  let r = { mode: "straight" };
+  if (state.pos) {
+    try { r = await MapView.fetchRoute(state.pos, facility, state.travelMode); } catch { /* 直線参考へ */ }
+  }
+  state.arRoute = r;
+  state.routeGeometry = r.geometry ?? null;
+  state.routedFacilityId = r.mode === "osrm" ? facility.id : null;
   try {
     // デモ現在地は fakeGps（屋内・発表・検証用）、GPSモードは実機GPS
     const fakePos = state.usingDemo ? state.pos : null;
-    // 経路形状は「この施設向けに引いた経路」の時だけ渡す（別施設の形状を流用しない）
-    const routeGeometry =
-      state.routedFacilityId === facility.id ? state.routeGeometry : null;
-    await AR.startAR(el.arHolder, { fakePos, facility, mode: state.arMode, routeGeometry });
+    // 道路経路が取れた時だけ青ルートを渡す（取れなければ AR 側で灰破線の直線参考）
+    await AR.startAR(el.arHolder, {
+      fakePos, facility, mode: state.arMode,
+      routeGeometry: r.mode === "osrm" ? r.geometry : null,
+    });
+    updateArOverlay();
     // 方位HUD・ミニマップを定期更新
     clearInterval(headingTimer);
     headingTimer = setInterval(updateHeadingHud, 200);
@@ -267,7 +300,7 @@ async function startLearnAR(t) {
   el.arSimControls.hidden = false; // 見回し・出発地点へ戻る
   el.arDpad.hidden = false;        // 歩いて移動
   el.arAttrib.hidden = false;      // OSM出典
-  el.arFaceBtn.textContent = "📜 伝承を正面に";
+  el.arFaceBtn.textContent = "📜 伝承";
   AR.setOnUpdate(() => { updateLearnOverlay(); updateHeadingHud(); });
   AR.setOnStatus((msg) => setArStatus(msg));
   updateLearnOverlay();
@@ -286,31 +319,32 @@ async function startLearnAR(t) {
 function updateLearnOverlay() {
   const t = state.learnTradition;
   if (!t) return;
-  const statusHtml = arStatusMsg
-    ? `<div class="arInfoCard" style="margin-bottom:6px;background:rgba(255,243,224,.95)">${arStatusMsg}</div>` : "";
-  el.arOverlay.innerHTML = statusHtml + learnOverlayHtml(t);
+  el.arOverlay.innerHTML = learnOverlayHtml(t);
 }
 
+// 200msごと: 方位HUD（次アクション）とミニマップ（実経路）を更新する。
+// オーバーレイカードはここでは書き換えない（移動時=onUpdateで更新。読書中のスクロールを保つ）。
 function updateHeadingHud() {
   const h = AR.currentHeading();
   const learning = AR.isStarted() && AR.getMode() === "learn";
   const f = learning ? state.learnTradition : state.selected;
   const pos = (AR.isStarted() && AR.effectivePos()) || state.pos;
-  // ミニマップ: 学習時は目的地線を出さず、周辺の伝承・施設だけ表示
-  if (AR.isStarted() && pos) drawMiniMap(pos, h, learning ? null : f);
+  // ミニマップ: 学習時は経路なし。案内時は実経路ポリラインを渡す。
+  if (AR.isStarted() && pos) {
+    drawMiniMap(pos, h, learning ? null : f, learning ? null : state.arRoute?.geometry);
+  }
   if (h == null) { el.arHeading.textContent = ""; return; }
   let tgt = "";
-  if (!learning && f && pos && f.lat != null) {
-    const b = bearingDeg(pos.lat, pos.lng, f.lat, f.lng);
-    const diff = Math.round(((b - h + 540) % 360) - 180);
-    const aligned = Math.abs(diff) < 8;
-    const dist = distanceM(pos.lat, pos.lng, f.lat, f.lng);
-    tgt = aligned ? `　✓ この方向・あと ${Math.round(dist)}m` :
-      `　${f.name}は ${diff > 0 ? "右" : "左"}へ ${Math.abs(diff)}°・あと ${Math.round(dist)}m`;
+  if (!learning) {
+    const ns = AR.isStarted() ? AR.nextStep() : null;
+    if (ns) {
+      const diff = Math.round(((ns.brg - h + 540) % 360) - 180);
+      const aligned = Math.abs(diff) < 12;
+      const turn = aligned ? "✓ この向き" : `${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°`;
+      tgt = `　${ns.hasRoute ? "次は" : "目的地は"}${turn}・約${Math.round(ns.dist)}m`;
+    }
   }
   el.arHeading.innerHTML = `方位 <b>${Math.round(h)}°</b>${tgt}`;
-  // 歩行中はオーバーレイも更新
-  if (learning) updateLearnOverlay(); else updateArOverlay();
 }
 
 function exitAR() {
@@ -322,7 +356,12 @@ function exitAR() {
   el.arAttrib.hidden = true;
   el.arOverlay.innerHTML = "";
   el.arHeading.textContent = "";
+  if (el.arToast) el.arToast.hidden = true;
+  clearTimeout(toastTimer);
+  el.arView.classList.remove("navExpanded");
   state.learnTradition = null;
+  state.arRoute = null;
+  navExpanded = false;
   MapView.invalidate();
 }
 
@@ -342,8 +381,17 @@ function init() {
   initDemoSelect();
   el.tabs.forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
   el.arExit.addEventListener("click", exitAR);
-  el.arFaceBtn.addEventListener("click", () => AR.faceTarget());
+  el.arFaceBtn.addEventListener("click", () => AR.faceGuide?.());
   el.arResetBtn.addEventListener("click", () => AR.faceNorth?.());
+  // ナビカードの折りたたみトグル（カードは200ms毎に再生成されるためデリゲートで配線）
+  el.arOverlay.addEventListener("click", (e) => {
+    if (e.target.closest('[data-act="toggleNav"]')) {
+      navExpanded = !navExpanded;
+      // 展開中は読書モード: 移動D-pad・操作列を隠してカードを読みやすくする（終了は残す）
+      el.arView.classList.toggle("navExpanded", navExpanded);
+      updateArOverlay();
+    }
+  });
   el.arZoomIn.addEventListener("click", () => AR.zoomBy(1.25));
   el.arZoomOut.addEventListener("click", () => AR.zoomBy(1 / 1.25));
   el.arWalkResetBtn.addEventListener("click", () => AR.resetWalk?.());

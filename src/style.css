@@ -68,15 +68,16 @@ body { display: flex; flex-direction: column; }
 #arCanvasHolder, #arCanvasHolder canvas, #arCanvasHolder video {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
 }
+/* 下部ナビカード（折りたたみ式）。最下段に薄く、操作系はこの上に重ねる */
 #arOverlay {
-  position: absolute; left: 8px; right: 8px; bottom: 52px; z-index: 510;
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 510;
   pointer-events: none;
 }
+#arOverlay > * { pointer-events: auto; }
 #arExit {
-  position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: 10px; z-index: 520;
-  background: rgba(255,255,255,.92); border: 1px solid #888; border-radius: 18px;
-  padding: 7px 16px; font-size: 13px;
+  position: absolute; right: 8px; bottom: 70px; z-index: 530;
+  background: rgba(255,255,255,.95); border: 1px solid #888; border-radius: 18px;
+  padding: 8px 14px; font-size: 13px; font-weight: 700;
 }
 
 #arHeading {
@@ -96,14 +97,23 @@ body { display: flex; flex-direction: column; }
 }
 #arAttrib[hidden] { display: none; }
 
+/* 一時メッセージ（読み込み中・案内など）。上部左に出し、数秒で自動的に消える＝下部操作に被らない */
+#arToast {
+  position: absolute; top: 58px; left: 8px; max-width: 232px; z-index: 516;
+  background: rgba(13,43,69,.86); color: #fff; font-size: 11px; line-height: 1.4;
+  padding: 6px 10px; border-radius: 10px; box-shadow: 0 1px 5px rgba(0,0,0,.35);
+}
+#arToast[hidden] { display: none; }
+
 /* ミニマップ（右上・丸型）。タップでサイズ切替（minimap.js） */
 #arMiniMap {
   position: absolute; top: 8px; right: 8px; z-index: 515;
   border-radius: 50%;
   box-shadow: 0 2px 8px rgba(0,0,0,.45);
 }
+/* ズーム（左中央）。右下の操作系と縦に分離して重ならないように */
 #arZoom {
-  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  position: absolute; left: 10px; top: 44%; transform: translateY(-50%);
   z-index: 515; display: flex; flex-direction: column; gap: 8px;
 }
 #arZoom button {
@@ -111,29 +121,67 @@ body { display: flex; flex-direction: column; }
   background: rgba(255,255,255,.92); border: 1px solid #888; color: #0d2b45;
   font-size: 22px; font-weight: 700; line-height: 1;
 }
+/* 「正面に/北/出発点」は右下の縦カラム（終了ボタンの上）。ナビカードに被らない */
 #arSimControls {
-  position: absolute; left: 0; right: 0; bottom: 50px; z-index: 520;
-  display: flex; gap: 8px; justify-content: center;
+  position: absolute; right: 8px; bottom: 118px; z-index: 530;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
 }
+#arSimControls[hidden] { display: none; }
 #arSimControls button {
   background: rgba(255,255,255,.92); border: 1px solid #0d2b45; color: #0d2b45;
-  border-radius: 16px; padding: 7px 14px; font-size: 12.5px; font-weight: 700;
+  border-radius: 14px; padding: 6px 12px; font-size: 12px; font-weight: 700; white-space: nowrap;
 }
 
-/* 歩行用D-pad（左下） */
+/* 歩行用D-pad（左下・ナビカードの上） */
 #arDpad {
-  position: absolute; left: 12px; bottom: 56px; z-index: 520;
+  position: absolute; left: 8px; bottom: 70px; z-index: 530;
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   touch-action: none;
 }
 #arDpad[hidden] { display: none; }
-#arDpad .dpadMid { display: flex; gap: 44px; }
+#arDpad .dpadMid { display: flex; gap: 40px; }
 #arDpad button {
-  width: 48px; height: 48px; border-radius: 12px;
+  width: 44px; height: 44px; border-radius: 12px;
   background: rgba(13,43,69,.78); color: #fff; border: 1px solid rgba(255,255,255,.4);
   font-size: 18px; line-height: 1; touch-action: none; user-select: none;
 }
 #arDpad button:active { background: rgba(21,101,192,.95); }
+
+/* 折りたたみ式ナビカード */
+.arNavCard {
+  background: rgba(255,255,255,.95); border-radius: 12px; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0,0,0,.4); max-width: 680px; margin: 0 auto;
+}
+.arNavToggle {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  border: none; background: none; text-align: left; cursor: pointer;
+  padding: 9px 12px; font-size: 12.5px; line-height: 1.45; color: #1d2429;
+}
+.arNavToggle .navHead {
+  flex: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.arNavToggle .navHead b { color: #0d47a1; }
+.arNavToggle .navChev { color: #8a97a3; font-size: 12px; flex: 0 0 auto; }
+.arNavBody {
+  display: none; padding: 0 12px 10px; font-size: 12px; line-height: 1.5;
+  max-height: 32vh; overflow-y: auto;
+}
+.arNavCard.expanded .arNavBody { display: block; }
+/* カード展開中は移動D-pad・操作列を隠し、解説を読みやすくする（終了ボタンは残す） */
+#arView.navExpanded #arDpad,
+#arView.navExpanded #arSimControls { display: none; }
+.arNavBody .navRow { color: #41505b; margin-bottom: 4px; }
+.arNavBody .navRow b { color: #0d2b45; }
+.arNavBody .navVia { color: #8a97a3; }
+.arNavBody .why {
+  margin: 5px 0; background: #f1f6fb; border-left: 3px solid var(--c-tower);
+  padding: 4px 6px; border-radius: 3px; color: #0d47a1;
+}
+.arNavBody .caution {
+  margin-top: 5px; font-size: 10.5px; color: #7a4a00;
+  background: var(--c-warn-bg); border-radius: 3px; padding: 3px 6px;
+}
+.arNavBody .navSrc { margin-top: 6px; font-size: 10px; color: #6b7680; line-height: 1.45; }
 
 /* AR案内タブ: モード切替 */
 .modeToggle { display: flex; gap: 6px; margin-top: 8px; }

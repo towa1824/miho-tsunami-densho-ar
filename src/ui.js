@@ -235,18 +235,33 @@ function bindActs(el, handlers) {
   });
 }
 
-// AR画面の下部オーバーレイ（カメラ映像の上のカード）
-export function arOverlayHtml(f, dist, t, travelMode = "foot") {
+// AR画面の下部オーバーレイ（折りたたみ式ナビカード）。
+// nav: { mode:"osrm"|"straight"|"none", distM, durS, remainingM, nextText, aligned }
+export function arOverlayHtml(f, nav, t, travelMode = "foot", expanded = false) {
   const heightLine = f.evacuation_height_m != null
     ? `避難可能高さ ${esc(f.evacuation_height_m)}m ／ ${esc(f.evacuation_place)}`
     : `避難可能場所: ${esc(f.evacuation_place)}`;
-  const tmin = travelTimeMin(dist, travelMode);
-  return `<div class="arInfoCard">
-    <b>→ ${esc(f.name)} まで ${formatDist(dist)}・${esc(TRAVEL_LABEL[travelMode])} ${esc(formatDuration(tmin))}</b><br>
-    <span style="color:#41505b">種別: ${esc(f.type)}｜${heightLine}</span><br>
-    <span style="color:#0d47a1">理由: ${esc(f.why)}</span>
-    ${t ? `<div class="caution" style="margin-top:4px">📜 ${esc(t.title)}（約${formatDist(t._dist)}）
-      — 伝承・史料は補助情報です。避難判断は公式情報に従ってください。</div>` : ""}
+  const hasRoad = nav.mode === "osrm";
+  const tLabel = TRAVEL_LABEL[travelMode];
+  const min = nav.durS != null ? Math.max(1, Math.round(nav.durS / 60)) : travelTimeMin(nav.distM, travelMode);
+  const totalStr = nav.distM != null ? formatDist(nav.distM) : "-";
+  const remainStr = nav.remainingM != null ? formatDist(nav.remainingM) : totalStr;
+  const via = hasRoad ? "OSM道路経路・参考" : "直線参考（道路経路なし）";
+  // 折りたたみ時に常時見える1行サマリ（次アクション＋残り）
+  const head = `→ ${esc(f.name)}　のこり<b>${remainStr}</b>${nav.nextText ? `　${esc(nav.nextText)}` : ""}`;
+  const body = `
+    <div class="navRow">距離 <b>${totalStr}</b>・${esc(tLabel)}<b> ${esc(formatDuration(min))}</b>
+      <span class="navVia">（${via}）</span></div>
+    <div class="navRow">種別: ${esc(f.type)}｜${heightLine}</div>
+    <div class="why">理由: ${esc(f.why)}</div>
+    ${t ? `<div class="caution">📜 近くの伝承: ${esc(t.title)}（約${formatDist(t._dist)}）— 補助情報です。</div>` : ""}
+    <div class="navSrc">経路は OpenStreetMap / OSRM 由来の<b>参考表示</b>です（${esc(tLabel)}プロファイル）。
+      徒歩避難の正式経路ではありません。実際の避難は公式情報に従ってください。</div>`;
+  return `<div class="arNavCard${expanded ? " expanded" : ""}">
+    <button class="arNavToggle" type="button" data-act="toggleNav">
+      <span class="navHead">${head}</span><span class="navChev">${expanded ? "▾" : "▸"}</span>
+    </button>
+    <div class="arNavBody">${body}</div>
   </div>`;
 }
 
