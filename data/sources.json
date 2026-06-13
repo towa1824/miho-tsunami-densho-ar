@@ -1,0 +1,121 @@
+[
+  {
+    "id": "shizuoka_city_tsunami_facility_page",
+    "title": "静岡市「津波避難施設」（公式ページ）",
+    "publisher": "静岡市",
+    "url": "https://www.city.shizuoka.lg.jp/s4268/s000362.html",
+    "accessed": "2026-06-10",
+    "used_for": "津波避難タワー・命山の住所、避難可能高さ（三保8基＋宮加三、由比ほか）、津波避難ビル・タワーの定義"
+  },
+  {
+    "id": "shizuoka_city_hinanbasho_page",
+    "title": "静岡市「指定緊急避難場所・指定避難所一覧」（公式ページ）",
+    "publisher": "静岡市",
+    "url": "https://www.city.shizuoka.lg.jp/s4268/s000061.html",
+    "accessed": "2026-06-10",
+    "used_for": "避難場所・避難所の制度区分の確認、一覧PDFへの入口"
+  },
+  {
+    "id": "tsunami_kinkyu_hinanbasho_pdf",
+    "title": "津波緊急避難場所一覧表（PDF）",
+    "publisher": "静岡市 危機管理課ほか",
+    "url": "https://www.city.shizuoka.lg.jp/documents/63/tsunamikinkyuhinanbasho.pdf",
+    "accessed": "2026-06-10",
+    "used_for": "三保地区支部の津波緊急避難場所（タワー7基＋命山）の避難可能場所（タワー上部避難床／命山上部避難床）、浸水想定区域内外の別"
+  },
+  {
+    "id": "tsunami_hinan_biru_pdf",
+    "title": "津波避難ビル一覧表（PDF・計144施設）",
+    "publisher": "静岡市 危機管理課",
+    "url": "https://www.city.shizuoka.lg.jp/documents/63/tsunamihinanbiru.pdf",
+    "accessed": "2026-06-10",
+    "used_for": "三保・折戸・清水（港）地区支部の津波避難ビル名と避難可能場所（清水三保第一小3・4階、清水第五中3階、日本平消防署三保出張所4階ホール、市営清水羽衣団地3階階段室、清水港湾合同庁舎屋上、清水マリンビル、清水マリンターミナル、エスパルスドリームプラザ、同P1立体駐車場、鈴与本社ビル、しみず港ビジネスセンター、清水港日の出駐車場ほか）"
+  },
+  {
+    "id": "hinanjo_list_pdf",
+    "title": "指定避難所一覧表（R8年3月時点・PDF）",
+    "publisher": "静岡市 危機管理課",
+    "url": "https://www.city.shizuoka.lg.jp/documents/63/hinannjoitirann202603.pdf",
+    "accessed": "2026-06-10",
+    "used_for": "清水三保第一小学校（三保1069-1）・清水第五中学校（三保1720）・清水三保第二小学校（折戸5-8-2）・清水南高（折戸3-2-1）・三保／折戸生涯学習交流館の所在地、指定避難所と緊急避難場所の区別"
+  },
+  {
+    "id": "suishin_keikaku_pdf",
+    "title": "静岡市津波防災地域づくり推進計画",
+    "publisher": "静岡市",
+    "url": "https://www.city.shizuoka.lg.jp/documents/53630/keikaku.pdf",
+    "accessed": "2026-06-10",
+    "used_for": "津波痕跡が残る神社としての御穂神社（図2-3）、宝永地震・安政東海地震の地域別被害記録（表2-1・表2-2：三保「村中海」、吹合約6m、江湖4〜5m、向島乗り越え約3m、避難4寺院）、静岡県第4次地震被害想定の概要（表2-3：清水港（日の出）L2津波高約4〜5m・到達1〜5分、市内最大約12m）",
+    "note": "表2-1の原典は「静岡県史 別編2 自然災害誌」（静岡県、1996）、表2-2の原典は「安政東海地震津波被害調査報告書」（静岡県地震対策課、1986。羽鳥1977・飯田1981を含む）、表2-3の原典は静岡県第4次地震被害想定"
+  },
+  {
+    "id": "namiya_2006_histeq",
+    "title": "行谷佑一「寺院の被害記録から見た安政東海地震(1854)の静岡県内の震度分布」歴史地震 第21号 pp.201-217",
+    "publisher": "歴史地震研究会",
+    "url": "https://www.histeq.jp/kaishi_21/P201-217.pdf",
+    "accessed": "2026-06-10",
+    "used_for": "清水区内寺院の被害記録と推定震度（専念寺6・実相寺6・梅陰寺6・禅叢寺6・妙福寺6〜7・江浄寺6）、各寺院の位置（度分秒）",
+    "note": "寺院位置（度分秒）を十進法に変換して伝承ポイントの緯度経度に使用"
+  },
+  {
+    "id": "okazaki_kitamura_seorito",
+    "title": "岡嵜颯太・北村晃寿「静岡県三保半島の『瀬織戸の渡し』に関する地質学的調査」静岡大学地球科学研究報告 第47号",
+    "publisher": "静岡大学",
+    "url": "https://shizuoka.repo.nii.ac.jp/record/12639/files/47-0015.pdf",
+    "accessed": "2026-06-10",
+    "used_for": "折戸・駒越間の旧水路「瀬織戸の渡し」の伝承（説明板・三保村誌・富士曼荼羅図）、津波による形成可能性の指摘、ボーリング調査の結果（形成時期は特定に至らず）、ボーリング地点1の座標",
+    "note": "形成時期が未特定のため、本データでは「津波でできた」と断定せず confidence=medium で扱う"
+  },
+  {
+    "id": "cck_chubusaigai_sennenji",
+    "title": "中部災害アーカイブス「清水港（Ａ）・専念寺（Ｂ）の安政津波跡」",
+    "publisher": "（一社）中部地域づくり協会 中部災害アーカイブス",
+    "url": "http://www.cck-chubusaigai.jp/jishin_syousai.php?id=12",
+    "accessed": "2026-06-10",
+    "used_for": "専念寺（清水区上1丁目）・清水港（清開）の安政津波跡、中村半左衛門の私記（実相寺→梅陰寺→専念寺と避難先を変えた記録）、「墓地が水浸しになり魚が泳いでいた」の言い伝え、向島を乗り越えた津波高さ3m、巴川の土砂堆積",
+    "note": "2026-06-10時点でhttps接続不可のためhttpで取得。一覧ページは https://www.cck-chubusaigai.jp/jishin_list.php。記事自体の出典は「清水市史 第1巻」「実録 安政大地震（静岡新聞社、1983）」「静岡新聞2011年5月30日」"
+  },
+  {
+    "id": "jma_tide_shimizu",
+    "title": "気象庁 潮位観測情報（清水検潮所）",
+    "publisher": "気象庁",
+    "url": "https://www.data.jma.go.jp/kaiyou/db/tide/suisan/station.php",
+    "accessed": "2026-06-10",
+    "used_for": "三保・江湖（清水検潮所付近）の代表点緯度経度（北緯35°01′・東経138°31′）",
+    "note": "度分表記のため精度は約±1km。安政東海地震の記録で『清水検潮所前の道路面T.P.上2.1m』として参照される地点"
+  },
+  {
+    "id": "shizuoka_city_bosai_navi",
+    "title": "静岡市防災ナビ（避難先一覧）",
+    "publisher": "静岡市",
+    "url": "https://navi.bosai.city.shizuoka.jp/evacuation-meeting-points?type=TsunamiEvacuationSite",
+    "accessed": "2026-06-10",
+    "used_for": "指定避難所（清水三保第一小・清水第五中・清水三保第二小・清水南高・三保／折戸生涯学習交流館）の緯度経度"
+  },
+  {
+    "id": "gsi_hinanbasho_geojson",
+    "title": "国土地理院 指定緊急避難場所データ（静岡県・GeoJSON）",
+    "publisher": "国土地理院（G空間情報センター経由）",
+    "url": "https://www.geospatial.jp/ckan/dataset/hinanbasho",
+    "accessed": "2026-06-10",
+    "used_for": "学校等の座標のクロスチェック（静岡市防災ナビ掲載値との照合）"
+  },
+  {
+    "id": "geocoding_gsi_nominatim",
+    "title": "ジオコーディング（国土地理院 住所検索API／OpenStreetMap Nominatim）",
+    "publisher": "国土地理院／OpenStreetMap contributors",
+    "url": "https://msearch.gsi.go.jp/address-search/AddressSearch",
+    "accessed": "2026-06-10",
+    "used_for": "公式資料に座標が無い施設・地点（津波避難タワー、港周辺の津波避難ビル、御穂神社、向島町など）の緯度経度補完。結果は tools/geocode_cache.json にキャッシュ",
+    "note": "Nominatim 利用規約に基づき1リクエスト/秒以下で実行。地図表示は © OpenStreetMap contributors"
+  },
+  {
+    "id": "osm_overpass_townscape",
+    "title": "OpenStreetMap 地物データ（建物・道路・水域・緑地・海岸線、Overpass API）",
+    "publisher": "OpenStreetMap contributors（ODbL）",
+    "url": "https://www.openstreetmap.org/copyright",
+    "accessed": "2026-06-13",
+    "used_for": "現地目線ビューの町並み3D表示（建物フットプリントと height / building:levels タグ、道路、水域、緑地・砂浜、海岸線）",
+    "note": "Overpass API（overpass-api.de ほか）から取得し localStorage に7日キャッシュ。高さタグが無い建物は種別ごとの既定値で補う概形表示であり、実際の建物形状・高さと異なる場合がある"
+  }
+]

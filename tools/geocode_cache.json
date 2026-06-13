@@ -1,0 +1,527 @@
+{
+  "静岡県静岡市清水区三保3503": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.006107,
+      "lng": 138.51825,
+      "title": "静岡県静岡市清水区三保３５０３番地",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡県静岡市清水区三保884": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.004353,
+      "lng": 138.516983,
+      "title": "静岡県静岡市清水区三保８８４番地",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡県静岡市清水区三保705": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.002228,
+      "lng": 138.509277,
+      "title": "静岡県静岡市清水区三保７０５番地",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡県静岡市清水区三保3001": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.010689,
+      "lng": 138.5215,
+      "title": "静岡県静岡市清水区三保３００１番地",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡県静岡市清水区三保760": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.00346,
+      "lng": 138.513687,
+      "title": "静岡県静岡市清水区三保７６０番地",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡県静岡市清水区三保本町2113": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.006561,
+      "lng": 138.517792,
+      "title": "静岡県静岡市清水区三保",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡県静岡市清水区三保967": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.001122,
+      "lng": 138.516769,
+      "title": "静岡県静岡市清水区三保９６７番地",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡県静岡市清水区三保2055": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.008167,
+      "lng": 138.524994,
+      "title": "静岡県静岡市清水区三保２０５５番地",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡県静岡市清水区宮加三27": {
+    "gsi": {
+      "ok": true,
+      "lat": 34.988503,
+      "lng": 138.497009,
+      "title": "静岡県静岡市清水区宮加三２７番地",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "日本平消防署三保出張所": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.00556953,
+      "lng": 138.5200446,
+      "title": "日本平消防署三保出張所",
+      "coarse": false
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.005516,
+      "lng": 138.520066,
+      "title": "日本平消防署三保出張所, 三保駒越線, 折戸二丁目, 折戸, 清水区, 静岡市, 静岡県, 424-8701, 日本",
+      "type": "None/fire_station",
+      "coarse": false
+    }
+  },
+  "市営清水羽衣団地 静岡市清水区": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "清水港湾合同庁舎": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.015835,
+      "lng": 138.489716,
+      "title": "静岡県静岡市清水区",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "清水マリンビル 静岡市清水区日の出町": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.015835,
+      "lng": 138.489716,
+      "title": "静岡県静岡市清水区",
+      "coarse": false
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.0087181,
+      "lng": 138.4961872,
+      "title": "清水マリンビル, しみずマリンロード, 港町一丁目, 入船町, 清水区, 静岡市, 静岡県, 424-8701, 日本",
+      "type": "None/yes",
+      "coarse": false
+    }
+  },
+  "清水マリンターミナル": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.015835,
+      "lng": 138.489716,
+      "title": "静岡県静岡市清水区",
+      "coarse": false
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.0090978,
+      "lng": 138.4969838,
+      "title": "Тут стоит корабль, しみずマリンロード, 港町一丁目, 入船町, 清水区, 静岡市, 静岡県, 424-8701, 日本",
+      "type": "None/ferry_terminal",
+      "coarse": false
+    }
+  },
+  "エスパルスドリームプラザ": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.0108286,
+      "lng": 138.4927627,
+      "title": "エスパルスドリームプラザ, 清水区, 静岡市, 静岡県, 424-0942, 日本",
+      "type": "None/retail",
+      "coarse": false
+    }
+  },
+  "エスパルスドリームプラザ 立体駐車場": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "鈴与本社 静岡市清水区入船町": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "しみず港ビジネスセンター": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "清水港日の出駐車場": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.015835,
+      "lng": 138.489716,
+      "title": "静岡県静岡市清水区",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "御穂神社 静岡市清水区三保": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡市清水区三保 吹合": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.006561,
+      "lng": 138.517792,
+      "title": "静岡県静岡市清水区三保",
+      "coarse": false
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡市清水区三保 江湖": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.006561,
+      "lng": 138.517792,
+      "title": "静岡県静岡市清水区三保",
+      "coarse": false
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡市清水区向島町": {
+    "gsi": {
+      "ok": true,
+      "lat": 34.998611,
+      "lng": 138.483627,
+      "title": "静岡県静岡市清水区向田町",
+      "coarse": false
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.026545,
+      "lng": 138.484739,
+      "title": "静岡市立清水辻小学校, 旧東海道, 辻二丁目, 本郷町, 清水区, 静岡市, 静岡県, 424-8701, 日本",
+      "type": "None/school",
+      "coarse": false
+    }
+  },
+  "三保ふれあい広場": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.006561,
+      "lng": 138.517792,
+      "title": "静岡県静岡市清水区三保",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.0043982,
+      "lng": 138.5178744,
+      "title": "三保ふれあい広場, 三保, 清水区, 静岡市, 静岡県, 424-8701, 日本",
+      "type": "None/park",
+      "coarse": false
+    }
+  },
+  "命山 三保": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "静岡県静岡市清水区三保本町": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.006561,
+      "lng": 138.517792,
+      "title": "静岡県静岡市清水区三保",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "宮加三公園": {
+    "gsi": {
+      "ok": true,
+      "lat": 34.983593,
+      "lng": 138.485275,
+      "title": "静岡県静岡市清水区宮加三",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "清水羽衣団地": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.015835,
+      "lng": 138.489716,
+      "title": "静岡県静岡市清水区",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "羽衣団地 三保": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "合同庁舎 日の出町": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "ドリームプラザ 駐車場": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "鈴与本社": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "鈴与株式会社 清水区入船町": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "鈴与": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.0168816,
+      "lng": 138.443356,
+      "title": "鈴与商事 株式会社, 静清バイパス, 高橋三丁目, 飯田町, 清水区, 静岡市, 静岡県, 424-0065, 日本",
+      "type": "None/company",
+      "coarse": false
+    }
+  },
+  "清水港ビジネスセンター": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.015835,
+      "lng": 138.489716,
+      "title": "静岡県静岡市清水区",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "日の出駐車場 清水": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "マリンパーキング 清水": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "御穂神社": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.0000668430556,
+      "lng": 138.5185143075,
+      "title": "御穂神社",
+      "coarse": false
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.0000859,
+      "lng": 138.5208476,
+      "title": "御穂神社, 神の道, 折戸五丁目, 三保松原町, 清水区, 静岡市, 静岡県, 424-8701, 日本",
+      "type": "None/place_of_worship",
+      "coarse": false
+    }
+  },
+  "真崎 三保": {
+    "gsi": {
+      "ok": false,
+      "error": "no result in bbox"
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.0202759,
+      "lng": 138.5205352,
+      "title": "真崎海水浴場, 三保灯台通り, 三保, 清水区, 静岡市, 静岡県, 424-8701, 日本",
+      "type": "None/beach_resort",
+      "coarse": false
+    }
+  },
+  "清水検潮所": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.015835,
+      "lng": 138.489716,
+      "title": "静岡県静岡市清水区",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": false,
+      "error": "no result in bbox"
+    }
+  },
+  "三保飛行場": {
+    "gsi": {
+      "ok": true,
+      "lat": 35.006561,
+      "lng": 138.517792,
+      "title": "静岡県静岡市清水区三保",
+      "coarse": true
+    },
+    "nominatim": {
+      "ok": true,
+      "lat": 35.0145295,
+      "lng": 138.5301943,
+      "title": "三保飛行場, 三保灯台通り, 三保, 清水区, 静岡市, 静岡県, 424-8701, 日本",
+      "type": "None/aerodrome",
+      "coarse": false
+    }
+  }
+}

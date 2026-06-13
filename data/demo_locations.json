@@ -1,0 +1,38 @@
+[
+  {
+    "id": "demo_miho_matsubara",
+    "label": "三保松原付近（羽衣の松）",
+    "lat": 34.994058,
+    "lng": 138.522662,
+    "source_title": "OpenStreetMap「新 羽衣の松」（Nominatim検索 2026-06-10）",
+    "source_url": "https://www.openstreetmap.org/",
+    "note": "発表・訓練用のデモ現在地。羽衣の松（鎌ヶ先遊歩道沿い）の位置。"
+  },
+  {
+    "id": "demo_gohojinja",
+    "label": "御穂神社付近",
+    "lat": 35.000086,
+    "lng": 138.520848,
+    "source_title": "OpenStreetMap 御穂神社（GSI地名検索とも約200mで一致）",
+    "source_url": "https://www.openstreetmap.org/",
+    "note": "宝永地震で村民が避難したと記録される御宮の前。"
+  },
+  {
+    "id": "demo_hinode",
+    "label": "清水港・日の出付近（マリンターミナル前）",
+    "lat": 35.009098,
+    "lng": 138.496984,
+    "source_title": "OpenStreetMap 静岡県清水港湾交流センター（清水マリンターミナル）",
+    "source_url": "https://www.openstreetmap.org/",
+    "note": "L2想定で津波到達1〜5分とされる日の出埠頭エリア。"
+  },
+  {
+    "id": "demo_sennenji",
+    "label": "専念寺付近（清水区上1丁目）",
+    "lat": 35.011667,
+    "lng": 138.484722,
+    "source_title": "行谷佑一(2006) 歴史地震 第21号の専念寺位置（度分秒を十進変換）",
+    "source_url": "https://www.histeq.jp/kaishi_21/P201-217.pdf",
+    "note": "安政東海地震時に住民が避難した寺院のひとつ。"
+  }
+]

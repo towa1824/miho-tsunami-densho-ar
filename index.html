@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <title>三保〜清水港 津波避難×災害伝承AR（学習用試作）</title>
+</head>
+<body>
+  <header id="appHeader">
+    <div class="ttl">
+      三保〜清水港 津波避難×災害伝承AR
+      <span class="beta">学習用試作</span>
+    </div>
+    <div id="noticeBar">
+      このシステムは平時の防災学習・避難訓練支援を目的とした試作です。実際の災害時は自治体・気象庁・消防・警察等の公式情報に従って避難してください。
+    </div>
+  </header>
+
+  <div id="locBar">
+    <label for="demoSelect">現在地:</label>
+    <select id="demoSelect"></select>
+    <span id="travelToggle" aria-label="移動手段">
+      <button data-travel="foot" class="on" type="button">🚶 徒歩</button>
+      <button data-travel="car" type="button">🚗 車</button>
+    </span>
+    <span id="locLabel"></span>
+  </div>
+  <div id="routeSummary" hidden></div>
+
+  <main id="stage">
+    <div id="map"></div>
+    <div id="arView" hidden>
+      <div id="arCanvasHolder"></div>
+      <div id="arHeading"></div>
+      <div id="arAttrib" hidden>町並み・地図 © OpenStreetMap contributors</div>
+      <div id="arZoom">
+        <button id="arZoomIn" type="button" aria-label="拡大">＋</button>
+        <button id="arZoomOut" type="button" aria-label="縮小">－</button>
+      </div>
+      <canvas id="arMiniMap" aria-label="ミニマップ"></canvas>
+      <div id="arOverlay"></div>
+      <div id="arSimControls" hidden>
+        <button id="arFaceBtn" type="button">🎯 避難先を正面に</button>
+        <button id="arResetBtn" type="button">🧭 北を正面に</button>
+        <button id="arWalkResetBtn" type="button">↩ 出発地点へ戻る</button>
+      </div>
+      <div id="arDpad" hidden>
+        <button data-move="F" type="button" aria-label="前進">▲</button>
+        <div class="dpadMid">
+          <button data-move="L" type="button" aria-label="左">◀</button>
+          <button data-move="R" type="button" aria-label="右">▶</button>
+        </div>
+        <button data-move="B" type="button" aria-label="後退">▼</button>
+      </div>
+      <button id="arExit" type="button">✕ 終了して地図へ</button>
+    </div>
+  </main>
+
+  <nav id="tabs">
+    <button data-tab="facilities" class="tab active" type="button">避難施設</button>
+    <button data-tab="traditions" class="tab" type="button">伝承・史料</button>
+    <button data-tab="ar" class="tab" type="button">現地目線</button>
+    <button data-tab="about" class="tab" type="button">注意事項</button>
+  </nav>
+  <section id="panel"></section>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

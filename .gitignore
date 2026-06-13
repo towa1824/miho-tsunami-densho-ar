@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.vite/
+
+# Claude Code / エディタのローカル設定（個人環境依存・共有不要）
+.claude/
