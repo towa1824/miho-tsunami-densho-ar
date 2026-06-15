@@ -13,7 +13,7 @@ import { loadTown, buildTownGroup } from "./town.js";
 import { bearingDeg, distanceM, destPoint, formatDist, toEastNorth, fromEastNorth } from "./geo.js";
 import {
   traditionsWithin, categoryOf, CATEGORY_COLORS,
-  nearestTsunamiFacilities, facilities,
+  nearestTsunamiFacilities, facilities, intensityLabel,
 } from "./data.js";
 
 let renderer, scene, camera, locar, controls, lookControls, video, videoStream;
@@ -625,7 +625,7 @@ function learnSignboard(t) {
     { text: t.disaster, size: 22, color: "#41505b" },
   ];
   if (t.intensity != null) {
-    lines.push({ text: `推定震度 ${t.intensity === 6.5 ? "6〜7" : t.intensity}（寺院被害記録）`, size: 21, color: "#b71c1c" });
+    lines.push({ text: `推定震度 ${intensityLabel(t)}（寺院被害記録）`, size: 21, color: "#b71c1c" });
   }
   wrap(t.evacuation_message, 30).slice(0, 1).forEach((x) =>
     lines.push({ text: x, size: 20, color: "#5d3200" }));

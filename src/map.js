@@ -3,7 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   facilities, traditions, hasPos, categoryOf,
-  CATEGORY_COLORS, CATEGORY_LABELS,
+  CATEGORY_COLORS, CATEGORY_LABELS, intensityLabel, coordCaveat,
 } from "./data.js";
 import { formatDist } from "./geo.js";
 
@@ -12,7 +12,8 @@ let currentMarker = null;
 let routeLine = null;
 let onMapClickCb = null;
 let onFacilityViewCb = null;
-const facilityMarkers = new Map(); // id -> marker
+const facilityMarkers = new Map();  // id -> { marker, cat }
+const traditionMarkers = new Map(); // id -> { marker, cat }
 
 // 地図クリックで現在地を指定するためのコールバック登録
 export function setOnMapClick(cb) { onMapClickCb = cb; }
@@ -33,10 +34,12 @@ function facilityPopup(f) {
   const h = f.evacuation_height_m != null ? `避難可能高さ ${esc(f.evacuation_height_m)}m / ` : "";
   const shelterNote = cat === "shelter"
     ? `<div class="src">※指定避難所は被災後の生活の場。津波警報中の一時避難はタワー・命山・津波避難ビルへ。</div>` : "";
+  const cv = coordCaveat(f);
+  const cvNote = cv ? `<div class="src">📍 ${esc(cv)}</div>` : "";
   return `<b>${esc(f.name)}</b><br>
     <span style="color:${CATEGORY_COLORS[cat]};font-weight:700">${esc(CATEGORY_LABELS[cat])}</span>
     （${esc(f.type)}）<br>${h}${esc(f.evacuation_place ?? "")}<br>
-    <div style="margin-top:4px">${esc(f.why ?? "")}</div>${shelterNote}${srcLink(f)}
+    <div style="margin-top:4px">${esc(f.why ?? "")}</div>${cvNote}${shelterNote}${srcLink(f)}
     <button type="button" class="pvGo" data-fid="${esc(f.id)}"
       style="margin-top:6px;width:100%;padding:6px;border-radius:7px;border:none;
              background:#0d2b45;color:#fff;font-size:12px;font-weight:700">
@@ -46,26 +49,40 @@ function facilityPopup(f) {
 function traditionPopup(t) {
   const ht = t.recorded_height_m != null
     ? `<br><b>記録上の津波高: 約${esc(t.recorded_height_m)}m</b>（${esc(t.recorded_height_note ?? "")}）` : "";
-  const inten = t.intensity != null
-    ? `<br>推定震度: ${t.intensity === 6.5 ? "6〜7" : esc(t.intensity)}（寺院被害記録による）` : "";
+  const intenStr = intensityLabel(t);
+  const inten = intenStr
+    ? `<br>推定震度: ${esc(intenStr)}（寺院被害記録による）` : "";
   return `<b>${esc(t.title)}</b><br>
     <span style="color:${CATEGORY_COLORS.tradition};font-weight:700">災害伝承・史料</span>
     ｜関連災害: ${esc(t.disaster)}${ht}${inten}
     <div style="margin-top:4px">${esc(t.summary)}</div>
     <div style="margin-top:4px;background:#fff3e0;padding:3px 5px;border-radius:3px">
       避難への意味づけ: ${esc(t.evacuation_message)}</div>
+    ${(() => { const cv = coordCaveat(t); return cv ? `<div class="src" style="margin-top:3px">📍 ${esc(cv)}</div>` : ""; })()}
     <div class="src" style="margin-top:3px">${esc(t.caution)}</div>${srcLink(t)}`;
 }
 
-function makeMarker(r, popupHtml) {
-  const cat = categoryOf(r);
-  const m = L.circleMarker([r.lat, r.lng], {
-    radius: cat === "tradition" || cat === "unsure" ? 8 : 9,
-    color: "#ffffff",
-    weight: 2,
-    fillColor: CATEGORY_COLORS[cat],
-    fillOpacity: 0.95,
+// マーカーアイコン: 通常は色つきドット、番号付きはカテゴリ色のバッジ（白い連番）。
+// 番号は「現在表示中のカードの並び順(displayIndex)」をそのまま描くだけで、
+// 並び順はここでは決めない（カードと同じ ordered 配列を共有する＝重複実装しない）。
+function markerIcon(cat, number) {
+  const color = CATEGORY_COLORS[cat];
+  if (number == null) {
+    return L.divIcon({
+      className: "mapMarker",
+      html: `<span class="mapMarker__dot" style="background:${color}"></span>`,
+      iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -9],
+    });
+  }
+  return L.divIcon({
+    className: "mapMarker mapMarker--num",
+    html: `<span class="mapMarker__badge" style="background:${color}">${number}</span>`,
+    iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -13],
   });
+}
+
+function makeMarker(r, popupHtml) {
+  const m = L.marker([r.lat, r.lng], { icon: markerIcon(categoryOf(r), null) });
   m.bindPopup(popupHtml, { maxWidth: 280 });
   return m;
 }
@@ -86,12 +103,13 @@ export function initMap(el) {
       ev.popup.getElement()?.querySelector("button[data-fid]")
         ?.addEventListener("click", () => onFacilityViewCb?.(f.id), { once: true });
     });
-    facilityMarkers.set(f.id, m);
+    facilityMarkers.set(f.id, { marker: m, cat: categoryOf(f) });
     bounds.push([f.lat, f.lng]);
   }
   for (const t of traditions) {
     if (!hasPos(t)) continue;
-    makeMarker(t, traditionPopup(t)).addTo(map);
+    const m = makeMarker(t, traditionPopup(t)).addTo(map);
+    traditionMarkers.set(t.id, { marker: m, cat: categoryOf(t) });
     bounds.push([t.lat, t.lng]);
   }
   map.fitBounds(bounds, { padding: [20, 20] });
@@ -138,10 +156,42 @@ export function setCurrentPos(pos, label, { recenter = true } = {}) {
 }
 
 export function focusFacility(id) {
-  const m = facilityMarkers.get(id);
-  if (m) {
-    map.setView(m.getLatLng(), 17);
-    m.openPopup();
+  const e = facilityMarkers.get(id);
+  if (e) {
+    map.setView(e.marker.getLatLng(), 17);
+    e.marker.openPopup();
+  }
+}
+
+// ---- カード番号 ↔ マーカー番号の同期 ----
+// アクティブタブのカードと「同じ ordered 配列」を受け取り、その並び順(1..n)を
+// マーカーへ反映する。現在地変更・徒歩/車・並び替えで順序が変わっても、カードと
+// 同じ配列から番号を振るので常に一致する。kind の種別だけ連番を振り、もう一方の
+// 種別と前回分の番号は通常ドットへ戻す（番号はそのタブの表示リストだけに付く）。
+export function setNumberedMarkers(kind, ordered) {
+  resetMarkerNumbers();
+  const target = kind === "tradition" ? traditionMarkers : facilityMarkers;
+  (ordered ?? []).forEach((r, i) => {
+    const e = target.get(r.id);
+    if (!e) return;
+    e.marker.setIcon(markerIcon(e.cat, i + 1));
+    e.marker.setZIndexOffset(1000); // 重なっても番号が前面で読めるように
+  });
+}
+
+// 番号表示のないタブ（AR案内・注意事項）では通常の色つきドットへ戻す
+export function clearNumbers() {
+  resetMarkerNumbers();
+}
+
+function resetMarkerNumbers() {
+  for (const e of facilityMarkers.values()) {
+    e.marker.setIcon(markerIcon(e.cat, null));
+    e.marker.setZIndexOffset(0);
+  }
+  for (const e of traditionMarkers.values()) {
+    e.marker.setIcon(markerIcon(e.cat, null));
+    e.marker.setZIndexOffset(0);
   }
 }
 
@@ -167,8 +217,8 @@ export function focusLatLng(lat, lng) {
 //   所要時間はOSRMのduration（徒歩/車とも）。直線フォールバック時のみ geo.js の概算。
 const ROUTE_COLOR = { foot: "#0d47a1", car: "#c62828" };
 const OSRM_PROFILE = {
-  foot: "routed-foot/route/v1/foot",   // 歩行者ネットワーク（避難の主動線）
-  car: "routed-car/route/v1/driving",  // 車道（車での避難・搬送の参考）
+  foot: "routed-foot/route/v1/foot",   // 歩行者が通行可能な道路ネットワーク（参考経路。徒歩最短は保証しない）
+  car: "routed-car/route/v1/driving",  // 車道（車での避難・搬送の参考経路）
 };
 
 // 道路経路をOSRMから取得するだけの純関数（地図には描かない）。

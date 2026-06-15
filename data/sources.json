@@ -76,6 +76,33 @@
     "note": "2026-06-10時点でhttps接続不可のためhttpで取得。一覧ページは https://www.cck-chubusaigai.jp/jishin_list.php。記事自体の出典は「清水市史 第1巻」「実録 安政大地震（静岡新聞社、1983）」「静岡新聞2011年5月30日」"
   },
   {
+    "id": "tsuji_meio_tsunami",
+    "title": "都司嘉宣ほか「明応東海地震（1498）による静岡県沿岸の津波被害」（津波工学研究報告 第30号）",
+    "publisher": "東北大学災害科学国際研究所 津波工学研究室",
+    "url": "https://www.tsunami.irides.tohoku.ac.jp/hokusai3/J/publications/pdf2/vol.30_16.pdf",
+    "accessed": "2026-06-15",
+    "used_for": "海長寺（清水区村松）の『日海記』による明応東海地震（1498）の津波被害・記録継承の整理。海長寺は地震動被害・記録継承の地点であり、清水区村松が津波で全山流失したと読むのは誤読である点の確認",
+    "note": "海長寺の座標はNAVITIME掲載位置、住所は日蓮宗 海長寺寺院ページで確認。本データでは confidence=medium で扱う"
+  },
+  {
+    "id": "shizuoka_pref_tanabata_gou_50",
+    "title": "静岡県『七夕豪雨災害から50年』",
+    "publisher": "静岡県",
+    "url": "https://www.pref.shizuoka.jp/kensei/pr/johoshi/kenmin/1061761/1063717/1063721.html",
+    "accessed": "2026-06-15",
+    "used_for": "巴川流域の水害記憶（昭和49年 七夕豪雨で一晩508mmの降雨、巴川氾濫で家屋1階が水没、以降も洪水被害が頻発）。2022年台風15号の浸水被害は山本・古場（2024）『2022年台風15号に伴う豪雨により静岡市巴川流域で発生した洪水災害の被害調査』を併用",
+    "note": "津波とは別の水害レイヤーの代表点（巴川下流・清水区市街地）。点ではなく面の情報として扱い、AR/地図では代表点表示にとどめている"
+  },
+  {
+    "id": "shizuoka_city_kawachi_no_oishi",
+    "title": "静岡市『河内の大石』",
+    "publisher": "静岡市",
+    "url": "https://www.city.shizuoka.lg.jp/okushizuoka/spot/s000090.html",
+    "accessed": "2026-06-15",
+    "used_for": "安政地震とその翌年の豪雨で真富士山中腹から流出したと伝わる巨石（高さ19m・周囲60m、市指定文化財）の伝承。清水区山地側の複合災害（地震＋豪雨による崩落・土石流）の教材",
+    "note": "座標は未入力のため地図・ARには表示しない（注意事項タブの位置未取得一覧に掲載）。三保〜清水港エリアからは離れた広域清水区版向け"
+  },
+  {
     "id": "jma_tide_shimizu",
     "title": "気象庁 潮位観測情報（清水検潮所）",
     "publisher": "気象庁",

@@ -1,6 +1,7 @@
 [
   {
     "id": "miho_gohojinja_hoeiansei",
+    "location_kind": "exact_point",
     "title": "御穂神社周辺の津波痕跡・避難伝承",
     "category": "災害伝承・史料",
     "disaster": "宝永地震（1707）・安政東海地震（1854）",
@@ -25,6 +26,7 @@
   },
   {
     "id": "miho_fukiai_ansei",
+    "location_kind": "representative_point",
     "title": "三保・吹合周辺（外洋からの津波遡上の記録）",
     "category": "災害伝承・史料",
     "disaster": "安政東海地震（1854）",
@@ -50,6 +52,7 @@
   },
   {
     "id": "miho_ego_ansei",
+    "location_kind": "representative_point",
     "title": "三保・江湖周辺（道路一面浸水・第2波最大の記録）",
     "category": "災害伝承・史料",
     "disaster": "安政東海地震（1854）",
@@ -72,6 +75,7 @@
   },
   {
     "id": "shimizu_mukaijima_ansei",
+    "location_kind": "representative_point",
     "title": "清水港・巴川河口・向島周辺（津波乗り越えと泥海の記録）",
     "category": "災害伝承・史料",
     "disaster": "安政東海地震（1854）",
@@ -96,6 +100,7 @@
   },
   {
     "id": "sennenji_hinan_denshou",
+    "location_kind": "exact_point",
     "title": "専念寺周辺（住民避難と「境内に魚」の伝承）",
     "category": "災害伝承・史料（避難・記録継承地点）",
     "disaster": "安政東海地震（1854）",
@@ -117,6 +122,7 @@
   },
   {
     "id": "seorito_watashi",
+    "location_kind": "representative_point",
     "title": "瀬織戸の渡し（折戸・駒越間の旧水路）",
     "category": "災害伝承・史料",
     "disaster": "（古代・中世の地形変化／過去の東海地震との関連が研究対象）",
@@ -138,6 +144,7 @@
   },
   {
     "id": "miho_myofukuji_ansei",
+    "location_kind": "exact_point",
     "title": "妙福寺（三保）の被害記録 — 推定震度6〜7",
     "category": "寺院被害記録・史料",
     "disaster": "安政東海地震（1854）",
@@ -159,6 +166,7 @@
   },
   {
     "id": "jissoji_ansei",
+    "location_kind": "exact_point",
     "title": "実相寺（清水）の被害・避難記録 — 推定震度6",
     "category": "寺院被害記録・史料",
     "disaster": "安政東海地震（1854）",
@@ -180,6 +188,7 @@
   },
   {
     "id": "baieiji_ansei",
+    "location_kind": "exact_point",
     "title": "梅陰寺（南岡町）の被害・避難記録 — 推定震度6",
     "category": "寺院被害記録・史料",
     "disaster": "安政東海地震（1854）",
@@ -201,6 +210,7 @@
   },
   {
     "id": "zensoji_ansei",
+    "location_kind": "exact_point",
     "title": "禅叢寺（上清水町）の被害・避難記録 — 推定震度6",
     "category": "寺院被害記録・史料",
     "disaster": "安政東海地震（1854）",
@@ -222,6 +232,7 @@
   },
   {
     "id": "ejiri_kojoji_ansei",
+    "location_kind": "exact_point",
     "title": "江浄寺（江尻東）の被害記録 — 推定震度6",
     "category": "寺院被害記録・史料",
     "disaster": "安政東海地震（1854）",

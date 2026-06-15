@@ -1,6 +1,6 @@
 // アプリ全体の制御: タブ切替・現在地(GPS/デモ)・地図・AR起動
 import "./style.css";
-import { demoLocations, facilityById, traditionById, nearestTradition } from "./data.js";
+import { demoLocations, facilityById, traditionById, nearestTradition, nearestTsunamiFacilities } from "./data.js";
 import * as MapView from "./map.js";
 import * as AR from "./ar.js";
 import { initMiniMap, drawMiniMap } from "./minimap.js";
@@ -21,6 +21,7 @@ const state = {
   arMode: "sim",
   travelMode: "foot",   // 徒歩 / 車（F-09）
   routedFacilityId: null,
+  facilityRoadOrder: null, // 道路距離で並べ替えた避難先上位（取得できた時のみ。既定は直線距離順）
   routeGeometry: null,  // OSRMの経路形状（現地目線ビューの道筋描画に渡す）
   arRoute: null,        // AR起動時に確保した道路経路 { mode, geometry, distM, durS }
   learnTradition: null, // 伝承学習ビューで深掘り中の伝承
@@ -74,8 +75,36 @@ function setPos(pos, label, { isDemo = true, recenter = true } = {}) {
   MapView.clearRoute();
   state.routedFacilityId = null;
   state.routeGeometry = null;
+  state.facilityRoadOrder = null; // 現在地が変わったら一旦直線距離順に戻し、道路距離は取り直す
   if (el.routeSummary) { el.routeSummary.hidden = true; el.routeSummary.innerHTML = ""; }
   renderActiveTab();
+  scheduleRoadOrder();
+}
+
+// 候補避難先を「道路距離（参考経路）」で並べ替える。まず直線距離順で即描画した後、
+// OSRM の道路距離を非同期取得して上位を再ソート→再描画する。取得できなければ直線距離順のまま。
+// カード番号・地図マーカー番号は renderActiveTab 経由で常に同じ並びに同期される。
+let roadSortToken = 0;
+function scheduleRoadOrder() {
+  const token = ++roadSortToken;
+  if (!state.pos) return;
+  const mode = state.travelMode;
+  const cands = nearestTsunamiFacilities(state.pos, 5); // 直線距離の上位候補に対してのみ道路距離を引く
+  if (cands.length < 2) return;
+  Promise.all(cands.map((f) =>
+    MapView.fetchRoute(state.pos, f, mode)
+      .then((r) => ({ f, r }))
+      .catch(() => ({ f, r: null }))
+  )).then((rows) => {
+    if (token !== roadSortToken || !state.pos) return; // 現在地/移動手段が変わった→破棄
+    const road = rows
+      .filter((x) => x.r && x.r.mode === "osrm" && x.r.distM != null)
+      .map((x) => ({ ...x.f, _roadDistM: x.r.distM, _roadDurS: x.r.durS }))
+      .sort((a, b) => a._roadDistM - b._roadDistM);
+    if (road.length < 3) return; // 道路距離が揃わない時は直線距離順のまま（誤解を避ける）
+    state.facilityRoadOrder = road.slice(0, 3);
+    if (state.tab === "facilities") renderActiveTab();
+  });
 }
 
 function initDemoSelect() {
@@ -134,10 +163,20 @@ function switchTab(tab) {
 
 function renderActiveTab() {
   const p = el.panel;
-  if (state.tab === "facilities") renderFacilitiesTab(p, state.pos, handlers, state.travelMode);
-  else if (state.tab === "traditions") renderTraditionsTab(p, state.pos, handlers);
-  else if (state.tab === "ar") renderArTab(p, state.pos, state, handlers);
-  else if (state.tab === "about") renderAboutTab(p);
+  // カードの表示順をそのまま地図マーカーの番号へ渡す（番号生成はカード側=ui.jsに一本化）。
+  if (state.tab === "facilities") {
+    const ordered = renderFacilitiesTab(p, state.pos, handlers, state.travelMode, state.facilityRoadOrder);
+    MapView.setNumberedMarkers("facility", ordered);
+  } else if (state.tab === "traditions") {
+    const ordered = renderTraditionsTab(p, state.pos, handlers);
+    MapView.setNumberedMarkers("tradition", ordered);
+  } else if (state.tab === "ar") {
+    renderArTab(p, state.pos, state, handlers);
+    MapView.clearNumbers();
+  } else if (state.tab === "about") {
+    renderAboutTab(p);
+    MapView.clearNumbers();
+  }
 }
 
 // ---- 経路 + 距離/所要時間（F-09, F-19）----
@@ -170,7 +209,7 @@ function showRouteSummary(f, r, loading) {
   if (r && r.durS != null) min = Math.max(1, Math.round(r.durS / 60));
   else min = travelTimeMin(distM, state.travelMode);
   const via = r && r.mode === "straight" ? "（直線参考・道路経路は取得できず）"
-    : r && r.mode === "osrm" ? "（道路距離）" : "";
+    : r && r.mode === "osrm" ? "（参考経路・道路距離。徒歩最短ではありません）" : "";
   el.routeSummary.hidden = false;
   el.routeSummary.innerHTML =
     `🏁 <b>${f.name}</b>まで ${label} <b>${formatDuration(min)}</b>` +
@@ -190,9 +229,11 @@ function clearRouteSummary() {
 function onTravelChange(mode) {
   if (state.travelMode === mode) return;
   state.travelMode = mode;
+  state.facilityRoadOrder = null; // 徒歩/車で道路距離が変わるため取り直す
   [...el.travelToggle.querySelectorAll("button")].forEach((b) =>
     b.classList.toggle("on", b.dataset.travel === mode));
   renderActiveTab(); // カード/ARの所要時間を更新
+  scheduleRoadOrder();
   if (state.routedFacilityId) showRouteFor(state.routedFacilityId); // 表示中の経路を引き直す
 }
 

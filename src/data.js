@@ -1,12 +1,41 @@
 // データ読込と分類・近傍探索。
 // 座標・施設・伝承は data/*.json に分離（ハードコード禁止 / CLAUDE.md）。
 import facilities from "../data/evacuation_facilities.json";
-import traditions from "../data/tradition_points.json";
+import traditionsBase from "../data/tradition_points.json";
+import traditionsAdditional from "../data/additional_shimizu_disaster_traditions.json";
 import sources from "../data/sources.json";
 import demoLocations from "../data/demo_locations.json";
 import { distanceM } from "./geo.js";
 
+// 既存の伝承・史料と追加分（清水区の災害伝承）をマージ。
+// 表示・近傍探索・地図/ARはすべてこの統合済み traditions を参照する。
+const traditions = [...traditionsBase, ...traditionsAdditional];
+
+// 開発時のみ: マージで id が重複していたら気づけるよう警告する（本番ビルドでは出さない）。
+if (import.meta.env?.DEV) {
+  const seen = new Set();
+  const dups = new Set();
+  for (const t of traditions) {
+    if (seen.has(t.id)) dups.add(t.id);
+    seen.add(t.id);
+  }
+  if (dups.size) {
+    console.warn("[data] 伝承データのid重複:", [...dups],
+      "— tradition_points.json と additional_shimizu_disaster_traditions.json を確認してください");
+  }
+}
+
 export { facilities, traditions, sources, demoLocations };
+
+// 推定震度の表示文字列。任意の intensity_label があれば優先（例: 「5以下」）、
+// なければ数値を整形（6.5 ⇒「6〜7」）。intensity が無ければ null（=表示しない）。
+// ui.js / map.js / ar.js で重複していた表示ロジックをここに集約。
+export function intensityLabel(t) {
+  if (t.intensity == null) return null;
+  if (t.intensity_label) return t.intensity_label;
+  if (t.intensity === 6.5) return "6〜7";
+  return String(t.intensity);
+}
 
 // 津波からの一時避難に使う種別（指定避難所はこれに含めない）
 const TSUNAMI_TYPES = ["津波緊急避難場所", "津波避難ビル", "津波避難施設"];
@@ -47,6 +76,33 @@ export const CATEGORY_LABELS = {
   tradition: "伝承・史料",
   unsure: "注意・位置未確認",
 };
+
+// 伝承・史料の地点種別（地図/ARで「点として断定してよいか」を区別する）。
+//   exact_point          … 寺社・施設など点として扱える
+//   representative_point … 旧地名・小字・範囲の代表点（おおよその位置）
+//   area_or_line         … 本来は面/ライン（流域の水害記憶など）。点表示は便宜的
+//   unresolved           … 座標なし。地図/ARに出さず、注意事項の未取得一覧へ
+export const LOCATION_KINDS = ["exact_point", "representative_point", "area_or_line", "unresolved"];
+
+// 明示の location_kind を優先し、未設定時は座標有無から保守的に推定する。
+export function locationKindOf(t) {
+  if (t.location_kind && LOCATION_KINDS.includes(t.location_kind)) return t.location_kind;
+  return hasPos(t) ? "exact_point" : "unresolved";
+}
+
+// 地図ポップアップ／カードに添える「位置の確かさ」注記。点として断定できない地点にだけ
+// 短い文言を返す（確かな点・非表示の地点は null）。伝承は location_kind、施設は confidence で判断。
+export function coordCaveat(r) {
+  if (r.category) { // 伝承・史料
+    const k = locationKindOf(r);
+    if (k === "representative_point") return "代表点（旧地名・範囲のおおよその位置。正確な被害地点ではありません）";
+    if (k === "area_or_line") return "代表点・本来は面/ライン情報（流域規模の記録で、特定地点の被害ではありません）";
+    return null;
+  }
+  // 施設: 座標があり confidence が high でない＝施設名・住所ジオコーディングの概略位置
+  if (hasPos(r) && r.confidence !== "high") return "おおよその位置（施設名・住所からの推定）";
+  return null;
+}
 
 function withDist(list, pos) {
   return list

@@ -2,7 +2,7 @@
 import {
   sources, traditions, categoryOf, CATEGORY_LABELS, hasPos,
   nearestTsunamiFacilities, nearestShelters, nearestTradition,
-  unresolvedRecords,
+  unresolvedRecords, intensityLabel, coordCaveat,
 } from "./data.js";
 import { formatDist, bearingDeg, distanceM, compassLabel, travelTimeMin, formatDuration, TRAVEL_LABEL } from "./geo.js";
 
@@ -26,24 +26,35 @@ function srcHtml(r) {
 }
 
 // ---------------- 避難施設タブ ----------------
-export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot") {
+export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot", presortedNear = null) {
   if (!pos) {
     el.innerHTML = `<div class="card">現在地が未取得です。上の「現在地」からGPSまたはデモ地点を選んでください。</div>`;
-    return;
+    return [];
   }
-  const near = nearestTsunamiFacilities(pos, 3);
+  // 並び順: 既定は直線距離。道路距離が取得できていれば main.js が presortedNear（道路距離順）を渡す。
+  const byRoad = Array.isArray(presortedNear) && presortedNear.length > 0;
+  const near = byRoad ? presortedNear : nearestTsunamiFacilities(pos, 3);
   const shelters = nearestShelters(pos, 2);
   const tLabel = TRAVEL_LABEL[travelMode];
   const cards = near.map((f, i) => {
     const h = f.evacuation_height_m != null
       ? `避難可能高さ <b>${esc(f.evacuation_height_m)}m</b> ／ ` : "";
-    const tmin = travelTimeMin(f._dist, travelMode);
+    // 道路距離(_roadDistM)があれば道路距離・OSRM所要時間、無ければ直線距離・概算所要時間で表示。
+    const useRoad = f._roadDistM != null;
+    const shownDist = useRoad ? f._roadDistM : f._dist;
+    const tmin = useRoad && f._roadDurS != null
+      ? Math.max(1, Math.round(f._roadDurS / 60))
+      : travelTimeMin(f._dist, travelMode);
+    const distKind = useRoad ? "道路距離" : "直線距離";
+    const cv = coordCaveat(f);
+    const cvNote = cv ? `<div class="meta">📍 ${esc(cv)}</div>` : "";
     return `<div class="card">
       <h3><span class="rankNo">${i + 1}</span>${badge(f)}${esc(f.name)}</h3>
-      <div class="meta">現在地から <span class="dist">${formatDist(f._dist)}</span>
+      <div class="meta">現在地から ${esc(distKind)} <span class="dist">${formatDist(shownDist)}</span>
         ・${esc(tLabel)} <span class="dist">${esc(formatDuration(tmin))}</span>
         （${esc(compassLabel(bearingDeg(pos.lat, pos.lng, f.lat, f.lng)))}方向）｜${esc(f.district)}地区</div>
       <div class="meta">${h}${esc(f.evacuation_place ?? "")}</div>
+      ${cvNote}
       <div class="why">なぜここへ: ${esc(f.why)}</div>
       ${srcHtml(f)}
       <div class="btnRow">
@@ -52,6 +63,10 @@ export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot") {
       </div>
     </div>`;
   }).join("");
+
+  const orderNote = byRoad
+    ? `候補は<b>道路距離（${esc(tLabel)}の参考経路）</b>順です。参考表示であり、徒歩最短ルートを保証するものではありません。`
+    : `候補は<b>直線距離</b>順です（道路距離は経路取得後に反映されます）。`;
 
   const shelterCards = shelters.map((f) => `
     <div class="card">
@@ -62,12 +77,15 @@ export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot") {
     </div>`).join("");
 
   el.innerHTML = `
-    <div class="noteSmall">現在地から近い<b>津波からの一時避難先</b>（津波緊急避難場所・津波避難ビル優先）上位3件。</div>
+    <div class="noteSmall">現在地から近い<b>津波からの一時避難先</b>（津波緊急避難場所・津波避難ビル優先）上位3件。${orderNote}</div>
     ${cards || `<div class="card">座標が確定している施設が近くにありません（data_quality.md参照）。</div>`}
     <div class="sectionTitle">参考: 指定避難所（津波の一時避難先とは区別）</div>
     <div class="noteSmall">指定避難所は被災後に滞在する施設です。津波警報中はまず上の一時避難先へ。</div>
     ${shelterCards}`;
   bindActs(el, handlers);
+  // カード番号(rankNo 1..n)と地図マーカー番号を同期するため、表示順の配列を返す。
+  // 番号を付けるのは上位の津波一時避難先(near)のみ＝カードに番号が付くものと一致。
+  return near;
 }
 
 // ---------------- 伝承・史料タブ ----------------
@@ -80,16 +98,18 @@ export function renderTraditionsTab(el, pos, handlers) {
   const noPos = traditions.filter((t) => !hasPos(t));
   const nearestId = pos && sorted.length ? sorted[0].id : null;
 
-  const card = (t, highlight) => {
+  const card = (t, no, highlight) => {
     const dist = t._dist != null
       ? `<span class="dist">${formatDist(t._dist)}</span>（${esc(compassLabel(bearingDeg(pos.lat, pos.lng, t.lat, t.lng)))}方向）` : "";
     const ht = t.recorded_height_m != null
       ? `<div class="meta">記録上の津波高: <b>約${esc(t.recorded_height_m)}m</b></div>` : "";
-    const inten = t.intensity != null
-      ? `<div class="meta">推定震度: <b>${t.intensity === 6.5 ? "6〜7" : esc(t.intensity)}</b>（寺院被害記録による）</div>` : "";
+    const intenStr = intensityLabel(t);
+    const inten = intenStr
+      ? `<div class="meta">推定震度: <b>${esc(intenStr)}</b>（寺院被害記録による）</div>` : "";
     return `<div class="card" ${highlight ? 'style="border:2px solid #ef6c00"' : ""}>
-      <h3>${badge(t)}${esc(t.title)}${highlight ? " <small>← いちばん近い</small>" : ""}</h3>
+      <h3>${no != null ? `<span class="rankNo">${no}</span>` : ""}${badge(t)}${esc(t.title)}${highlight ? " <small>← いちばん近い</small>" : ""}</h3>
       <div class="meta">関連災害: ${esc(t.disaster)}　${dist}</div>
+      ${(() => { const cv = coordCaveat(t); return cv ? `<div class="meta">📍 ${esc(cv)}</div>` : ""; })()}
       ${ht}${inten}
       <div style="margin-top:4px">${esc(t.summary)}</div>
       <div class="why" style="border-left-color:#ef6c00;background:#fff7ef">避難行動への意味づけ: ${esc(t.evacuation_message)}</div>
@@ -104,10 +124,13 @@ export function renderTraditionsTab(el, pos, handlers) {
 
   el.innerHTML = `
     <div class="noteSmall">${esc(TRADITION_NOTE)}</div>
-    ${sorted.map((t) => card(t, t.id === nearestId)).join("")}
+    ${sorted.map((t, i) => card(t, i + 1, t.id === nearestId)).join("")}
     ${noPos.length ? `<div class="sectionTitle">位置未取得の資料（READMEの未取得一覧参照）</div>` : ""}
-    ${noPos.map((t) => card(t, false)).join("")}`;
+    ${noPos.map((t) => card(t, null, false)).join("")}`;
   bindActs(el, handlers);
+  // 表示順(=地図マーカーの番号)を共有するため、座標ありの表示リストを返す。
+  // 位置未取得(noPos)はマーカーが無いので番号を振らない＝返さない。
+  return sorted;
 }
 
 // ---------------- AR案内タブ ----------------
@@ -269,11 +292,15 @@ export function arOverlayHtml(f, nav, t, travelMode = "foot", expanded = false) 
 export function learnOverlayHtml(t) {
   const ht = t.recorded_height_m != null
     ? `<span class="chip">🌊 記録 約${esc(t.recorded_height_m)}m</span>` : "";
-  const inten = t.intensity != null
-    ? `<span class="chip">推定震度 ${t.intensity === 6.5 ? "6〜7" : esc(t.intensity)}</span>` : "";
+  const intenStr = intensityLabel(t);
+  const inten = intenStr
+    ? `<span class="chip">推定震度 ${esc(intenStr)}</span>` : "";
+  const cv = coordCaveat(t);
+  const cvBanner = cv ? `<div class="caution">📍 ${esc(cv)}</div>` : "";
   return `<div class="arLearnCard">
     <h3>📜 ${esc(t.title)}</h3>
     <div class="learnChips">${esc(t.disaster)}${ht}${inten}</div>
+    ${cvBanner}
     <div class="learnBody">${esc(t.summary)}</div>
     <div class="why" style="border-left-color:#ef6c00;background:#fff7ef">🧭 避難への意味づけ: ${esc(t.evacuation_message)}</div>
     <div class="caution">${esc(t.caution)}</div>

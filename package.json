@@ -10,6 +10,7 @@
     "dev:preview": "cross-env VITE_HTTP=1 vite --port 5180 --strictPort",
     "build": "vite build",
     "preview": "vite preview",
+    "validate:data": "node tools/validate-data.mjs",
     "geocode": "python tools/geocode.py"
   },
   "dependencies": {
