@@ -110,30 +110,60 @@ export function setZoom(z) { zoom = Math.min(3.5, Math.max(1, z)); applyZoom(); 
 export function zoomBy(factor) { setZoom(zoom * factor); }
 export function getZoom() { return zoom; }
 
+// canvasの実描画幅で折り返す（measureText基準）。日本語・全角・絵文字を grapheme 単位で扱う。
+function wrapByWidth(ctx, text, font, maxW) {
+  ctx.font = font;
+  const out = [];
+  let cur = "";
+  for (const ch of Array.from(String(text ?? ""))) {
+    if (ch === "\n") { out.push(cur); cur = ""; continue; }
+    if (cur !== "" && ctx.measureText(cur + ch).width > maxW) { out.push(cur); cur = ch; }
+    else cur += ch;
+  }
+  if (cur !== "" || out.length === 0) out.push(cur);
+  return out;
+}
+
+// 白背景＋左アクセントバーの文字スプライト。各入力行を実描画幅で折り返し、
+// 行数に応じて canvas 高さ・Sprite スケールが自然に伸びる（長い日本語がクリップされない）。
+// ワールド寸法は userData.worldW / worldH に持たせ、配置計算（重なり回避）に使える。
 function makeTextSprite(lines, { accent = "#0d2b45", width = 460 } = {}) {
   const pad = 18, lineH = 34, fontPx = 26;
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
-  canvas.width = width * 2;
-  canvas.height = (lines.length * lineH + pad * 2 + 8) * 2;
+  const textX = pad + 6;                 // 左アクセントバー(10px)＋余白
+  const maxTextW = width - textX - pad;  // 文字に使える実幅
+  // 各行をピクセル幅で折り返して描画行(rows)に展開
+  const rows = [];
+  for (const ln of lines) {
+    const size = ln.size ?? fontPx;
+    const font = `${ln.bold ? "700 " : ""}${size}px sans-serif`;
+    for (const piece of wrapByWidth(ctx, ln.text, font, maxTextW)) {
+      rows.push({ text: piece, bold: ln.bold, size, color: ln.color });
+    }
+  }
+  const w = width, h = rows.length * lineH + pad * 2 + 8;
+  canvas.width = w * 2;
+  canvas.height = h * 2;
   ctx.scale(2, 2);
-  const w = width, h = lines.length * lineH + pad * 2 + 8;
   ctx.fillStyle = "rgba(255,255,255,0.94)";
   ctx.beginPath();
   ctx.roundRect(0, 0, w, h, 14);
   ctx.fill();
   ctx.fillStyle = accent;
   ctx.fillRect(0, 0, 10, h);
-  lines.forEach((ln, i) => {
-    ctx.font = `${ln.bold ? "700 " : ""}${ln.size ?? fontPx}px sans-serif`;
-    ctx.fillStyle = ln.color ?? "#1d2429";
-    ctx.fillText(ln.text, pad + 6, pad + 4 + lineH * i + fontPx * 0.8);
+  rows.forEach((r, i) => {
+    ctx.font = `${r.bold ? "700 " : ""}${r.size ?? fontPx}px sans-serif`;
+    ctx.fillStyle = r.color ?? "#1d2429";
+    ctx.fillText(r.text, textX, pad + 4 + lineH * i + fontPx * 0.8);
   });
   const tex = new THREE.CanvasTexture(canvas);
   tex.anisotropy = 4;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
   const scale = 0.013; // 1px ≒ 1.3cm → 12m先で読める大きさ
   sp.scale.set(w * scale, h * scale, 1);
+  sp.userData.worldW = w * scale;
+  sp.userData.worldH = h * scale;
   return sp;
 }
 
@@ -317,20 +347,27 @@ function building3D(f, isTarget) {
 // 伝承・史料の看板（柱＋ボード）＋記録高ゲージ
 function signboard(t) {
   const grp = new THREE.Group();
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 4.5, 8),
-    new THREE.MeshBasicMaterial({ color: 0x8d6e63 }));
-  post.position.y = GROUND_Y + 2.25; grp.add(post);
+  // ボードはピクセル幅で自動折り返し（タイトル・災害名・避難メッセージ・注意文を省略せず全文表示）
   const board = makeTextSprite([
     { text: `📜 ${t.title}`, bold: true, size: 26, color: "#7a3b00" },
-    { text: `${t.disaster}`, size: 21, color: "#41505b" },
-    ...wrap(t.evacuation_message, 28).slice(0, 2).map((x) => ({ text: x, size: 20, color: "#5d3200" })),
+    { text: t.disaster, size: 21, color: "#41505b" },
+    { text: t.evacuation_message, size: 20, color: "#5d3200" },
     { text: "※伝承は補助情報。避難判断は公式情報で。", size: 18, color: "#8a6d3b" },
   ], { accent: CATEGORY_COLORS.tradition, width: 560 });
-  board.position.y = GROUND_Y + 5.6; grp.add(board);
+  const bw = board.userData.worldW || 7.3;
+  const bh = board.userData.worldH || 5;
+  // 柱はボード下端（GROUND_Y+4付近）まで伸ばす
+  const postTop = 4;
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, postTop, 8),
+    new THREE.MeshBasicMaterial({ color: 0x8d6e63 }));
+  post.position.y = GROUND_Y + postTop / 2; grp.add(post);
+  // ボードの下端を柱の上端付近にそろえて配置（中心 = 下端 + 高さ/2）
+  board.position.y = GROUND_Y + postTop - 0.3 + bh / 2; grp.add(board);
   if (t.recorded_height_m != null) {
     const gauge = buildHeightGauge(t.recorded_height_m,
       `${t.disaster.includes("安政") ? "安政の津波" : "記録津波"} 記録高 約${t.recorded_height_m}m（史料）`);
-    gauge.position.x = 3; grp.add(gauge);
+    // 橙の説明ボードの右端の外側にゲージを置き、青い柱・記録高ラベルと重ならないようにする
+    gauge.position.x = bw / 2 + 4; grp.add(gauge);
   }
   return grp;
 }
@@ -714,11 +751,12 @@ function refreshTraditions() {
     const board = makeTextSprite([
       { text: `📜 ${t.title}`, bold: true, size: 26, color: "#7a3b00" },
       { text: `この方向 約${formatDist(t._dist)}｜${t.disaster}`, size: 22, color: "#41505b" },
-      ...wrap(t.evacuation_message, 26).slice(0, 2)
-        .map((x) => ({ text: x, size: 21, color: "#5d3200" })),
+      { text: t.evacuation_message, size: 21, color: "#5d3200" },
       { text: "※伝承は補助情報。避難判断は公式情報で。", size: 19, color: "#8a6d3b" },
     ], { accent: CATEGORY_COLORS.tradition, width: 520 });
-    placeAt(board, p.lat, p.lng, 1.4 + (i % 2) * 0.8);
+    const bh = board.userData.worldH || 5;
+    // 下端を一定高さにそろえ（中心=下端+高さ/2）、複数ボードは少し高さをずらして重なりを抑える
+    placeAt(board, p.lat, p.lng, 2.0 + (i % 2) * 0.8 + bh / 2);
     scene.add(board);
     traditionObjs.push(board);
 
