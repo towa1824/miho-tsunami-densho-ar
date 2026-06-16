@@ -74,6 +74,15 @@ npm run validate:data # data/*.json の健全性チェック（id重複・出典
 npm run geocode    # data/*.json の lat/lng=null を GSI/Nominatim で補完（要 Python 3）
 ```
 
+### 公開（GitHub Pages・自動デプロイ）
+
+`main` に push すると `.github/workflows/deploy-pages.yml` がビルドして GitHub Pages へ自動デプロイします。
+
+- 公開URL: **https://towa1824.github.io/miho-tsunami-densho-ar/**
+- 初回のみ設定が必要: **Settings → Pages → Build and deployment → Source** を「**GitHub Actions**」にする
+- Pages は HTTPS 配信なので、公開URLでは GPS・カメラ・方位センサー（セキュアコンテキスト必須）も動く
+- 公開されるのは `dist/`（ビルド成果物）のみ
+
 ---
 
 ## 使い方
