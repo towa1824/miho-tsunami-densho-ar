@@ -1,0 +1,75 @@
+name: Deploy to GitHub Pages
+
+# main への push（または手動実行）でビルドし、GitHub Pages へ自動デプロイする。
+# 公開URL: https://<ユーザー名>.github.io/<リポジトリ名>/
+#   → このリポジトリでは https://towa1824.github.io/miho-tsunami-densho-ar/
+#
+# 事前設定（1回だけ・リポジトリ管理者）:
+#   Settings → Pages → Build and deployment → Source を「GitHub Actions」に変更する。
+#   （未設定だと deploy ジョブが失敗します）
+#
+# 公開されるのは dist/（ビルド成果物）のみ。data/*.json は import でJSにバンドルされるため
+# ソースや生データはそのままは公開されない。Pages は HTTPS 配信なので、公開URLでは
+# カメラ/GPS/方位センサー（セキュアコンテキスト必須）も動作する。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pages デプロイに必要な最小権限のみ付与する。
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Pages へのデプロイは同時に1つだけ。実行中のデプロイは中断しない（公開の取りこぼし防止）。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      # 供給網対策として SHA 固定にする場合は @<commit-sha> へ置き換える（下記はメジャータグ）
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (clean, lockfile-based)
+        run: npm ci
+
+      # 壊れたデータを公開しないよう、ビルド前に検証する（CI と同じチェック）。
+      - name: Validate data (sources / ids / coordinates / location_kind)
+        run: npm run validate:data
+
+      # GitHub Pages はサブパス（/<リポジトリ名>/）配信のため base を合わせる。
+      # リポジトリ名はイベントから取得し、リネームしても追従させる。
+      - name: Build
+        run: npm run build -- --base=/${{ github.event.repository.name }}/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact (dist/)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
