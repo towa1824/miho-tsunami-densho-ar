@@ -32,3 +32,9 @@
 - 町並み3D（src/town.js）は OSM Overpass API（無料・APIキー不要）。結果は localStorage に7日
   キャッシュし連続リクエストしない。「© OpenStreetMap contributors」表記（#arAttrib・注意事項タブ）を
   消さない。建物の形・高さはタグからの推定を含む概形（=正確な実形ではない）として扱う。
+
+## Part 3: Git / PR 運用
+
+- 変更は**必ず Pull Request を作成して提出する**（ブランチへの push だけで終わらせない）。
+- **PR を自動でマージしない**。マージは利用者（メンテナ）が判断・実行する。
+

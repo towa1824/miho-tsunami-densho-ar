@@ -29,6 +29,9 @@ const state = {
 let arStatusMsg = "";
 let navExpanded = false; // ナビカードの展開状態（折りたたみ）
 let headingTimer = null;
+// 下部シート（スワイプで高さ変更）。snapは画面サイズから算出。0=最小(地図最大) 1=中(既定) 2=最大
+let sheetSnaps = { min: 0, mid: 0, max: 0 };
+let sheetIndex = 1;
 
 const el = {
   demoSelect: document.getElementById("demoSelect"),
@@ -37,6 +40,8 @@ const el = {
   tabs: document.querySelectorAll("#tabs .tab"),
   map: document.getElementById("map"),
   stage: document.getElementById("stage"),
+  tabBar: document.getElementById("tabs"),
+  sheetHandle: document.getElementById("sheetHandle"),
   travelToggle: document.getElementById("travelToggle"),
   routeSummary: document.getElementById("routeSummary"),
   arView: document.getElementById("arView"),
@@ -290,6 +295,85 @@ function setupDpad() {
   });
 }
 
+// ---- 下部シート（タブ＋カードをスワイプで上下リサイズ）----
+// 経路案内を見やすくするため、シートを下げると地図が広がる。snapは画面サイズから都度算出する。
+function computeSheetSnaps() {
+  const stageTop = el.stage.getBoundingClientRect().top;        // 上部チャーム（ヘッダ等）の下端
+  const handleH = el.sheetHandle.offsetHeight || 34;
+  const tabsH = el.tabBar.offsetHeight || 38;
+  const avail = window.innerHeight - stageTop - handleH - tabsH; // 地図＋パネルに使える高さ
+  const peek = Math.min(180, Math.max(110, Math.round(avail * 0.25))); // 最大化時に残す地図の高さ
+  const max = Math.max(140, avail - peek);
+  const mid = Math.min(max, Math.round(window.innerHeight * 0.44));
+  sheetSnaps = { min: 0, mid, max };
+}
+
+// スナップ位置 i (0/1/2) へシートを移動。高さは CSS変数 --panel-h で反映（transitionで吸着）。
+function setSheetSnap(i) {
+  sheetIndex = Math.max(0, Math.min(2, i));
+  computeSheetSnaps();
+  const h = [sheetSnaps.min, sheetSnaps.mid, sheetSnaps.max][sheetIndex];
+  document.body.classList.toggle("sheet-collapsed", sheetIndex === 0);
+  el.sheetHandle.setAttribute("aria-expanded", String(sheetIndex !== 0));
+  el.panel.style.setProperty("--panel-h", `${h}px`);
+}
+
+// タブをタップしたとき最小化されていたら中段へ広げる（カードが見えるように）
+function expandSheetIfCollapsed() {
+  if (sheetIndex === 0) setSheetSnap(1);
+}
+
+function setupSheet() {
+  const handle = el.sheetHandle, panel = el.panel;
+  let dragging = false, startY = 0, startH = 0, moved = 0, raf = 0;
+  // ドラッグ中はトランジションを切っているので、地図はrAFで間引いて再計測し追従させる
+  const liveInvalidate = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; MapView.invalidate(); });
+  };
+  const onDown = (e) => {
+    dragging = true; moved = 0; startY = e.clientY;
+    computeSheetSnaps();
+    startH = panel.getBoundingClientRect().height;
+    document.body.classList.add("sheet-dragging");
+    handle.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const dy = startY - e.clientY;                 // 上方向ドラッグで＋（高くなる）
+    moved = Math.max(moved, Math.abs(dy));
+    const h = Math.min(sheetSnaps.max, Math.max(0, startH + dy));
+    document.body.classList.toggle("sheet-collapsed", h < 6);
+    panel.style.setProperty("--panel-h", `${h}px`);
+    liveInvalidate();
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("sheet-dragging");
+    if (moved < 6) { setSheetSnap((sheetIndex + 1) % 3); return; } // ほぼ動かさなければタップ＝次の段へ
+    const h = panel.getBoundingClientRect().height;
+    const arr = [sheetSnaps.min, sheetSnaps.mid, sheetSnaps.max];   // ドラッグ終点に最も近い段へ吸着
+    let best = 0, bestD = Infinity;
+    arr.forEach((v, i) => { const d = Math.abs(v - h); if (d < bestD) { bestD = d; best = i; } });
+    setSheetSnap(best);
+  };
+  handle.addEventListener("pointerdown", onDown);
+  handle.addEventListener("pointermove", onMove);
+  handle.addEventListener("pointerup", onUp);
+  handle.addEventListener("pointercancel", onUp);
+  handle.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp") { setSheetSnap(sheetIndex + 1); e.preventDefault(); }
+    else if (e.key === "ArrowDown") { setSheetSnap(sheetIndex - 1); e.preventDefault(); }
+    else if (e.key === "Enter" || e.key === " ") { setSheetSnap((sheetIndex + 1) % 3); e.preventDefault(); }
+  });
+  // スナップ完了（高さのトランジション終了）で地図を再計測＝タイル/経路が欠けない
+  panel.addEventListener("transitionend", (e) => { if (e.propertyName === "height") MapView.invalidate(); });
+  window.addEventListener("resize", () => setSheetSnap(sheetIndex));
+  setSheetSnap(1); // 既定は中段
+}
+
 async function startAR(facility) {
   state.selected = facility;
   arStatusMsg = "";
@@ -420,7 +504,7 @@ function init() {
   });
   initMiniMap(el.arMiniMap);
   initDemoSelect();
-  el.tabs.forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+  el.tabs.forEach((b) => b.addEventListener("click", () => { switchTab(b.dataset.tab); expandSheetIfCollapsed(); }));
   el.arExit.addEventListener("click", exitAR);
   el.arFaceBtn.addEventListener("click", () => AR.faceGuide?.());
   el.arResetBtn.addEventListener("click", () => AR.faceNorth?.());
@@ -437,6 +521,7 @@ function init() {
   el.arZoomOut.addEventListener("click", () => AR.zoomBy(1 / 1.25));
   el.arWalkResetBtn.addEventListener("click", () => AR.resetWalk?.());
   setupDpad();
+  setupSheet();
   el.travelToggle.querySelectorAll("button").forEach((b) =>
     b.addEventListener("click", () => onTravelChange(b.dataset.travel)));
   onDemoChange(); // 初期デモ地点で表示
