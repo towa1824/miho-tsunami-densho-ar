@@ -1,0 +1,41 @@
+name: CI
+
+# プルリクエスト（main 宛て）と main への push でビルド・データ検証を実行する。
+# branch protection / ruleset の必須ステータスチェックとして利用する想定。
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# 最小権限（読み取りのみ）。fork からの PR でも secrets は使わない。
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build & validate data
+    runs-on: ubuntu-latest
+    steps:
+      # 供給網対策として SHA 固定にする場合は @<commit-sha> へ置き換える（下記はメジャータグ）
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (clean, lockfile-based)
+        run: npm ci
+
+      - name: Validate data (sources / ids / coordinates / location_kind)
+        run: npm run validate:data
+
+      - name: Build
+        run: npm run build

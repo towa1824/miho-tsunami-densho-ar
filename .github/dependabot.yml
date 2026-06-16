@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # npm 依存（Vite / Leaflet / three / locar など）の更新
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps"
+
+  # GitHub Actions（ci.yml で使う action）の更新
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels:
+      - github-actions
+    commit-message:
+      prefix: "ci"
