@@ -39,7 +39,7 @@ function facilityPopup(f) {
   return `<b>${esc(f.name)}</b><br>
     <span style="color:${CATEGORY_COLORS[cat]};font-weight:700">${esc(CATEGORY_LABELS[cat])}</span>
     （${esc(f.type)}）<br>${h}${esc(f.evacuation_place ?? "")}<br>
-    <div style="margin-top:4px">${esc(f.why ?? "")}</div>${cvNote}${shelterNote}${srcLink(f)}
+    <div class="pvDesc" style="margin-top:4px">${esc(f.why ?? "")}</div>${cvNote}${shelterNote}${srcLink(f)}
     <button type="button" class="pvGo" data-fid="${esc(f.id)}"
       style="margin-top:6px;width:100%;padding:6px;border-radius:7px;border:none;
              background:#0d2b45;color:#fff;font-size:12px;font-weight:700">
@@ -55,7 +55,7 @@ function traditionPopup(t) {
   return `<b>${esc(t.title)}</b><br>
     <span style="color:${CATEGORY_COLORS.tradition};font-weight:700">災害伝承・史料</span>
     ｜関連災害: ${esc(t.disaster)}${ht}${inten}
-    <div style="margin-top:4px">${esc(t.summary)}</div>
+    <div class="pvDesc" style="margin-top:4px">${esc(t.summary)}</div>
     <div style="margin-top:4px;background:#fff3e0;padding:3px 5px;border-radius:3px">
       避難への意味づけ: ${esc(t.evacuation_message)}</div>
     ${(() => { const cv = coordCaveat(t); return cv ? `<div class="src" style="margin-top:3px">📍 ${esc(cv)}</div>` : ""; })()}
@@ -83,7 +83,9 @@ function markerIcon(cat, number) {
 
 function makeMarker(r, popupHtml) {
   const m = L.marker([r.lat, r.lng], { icon: markerIcon(categoryOf(r), null) });
-  m.bindPopup(popupHtml, { maxWidth: 280 });
+  // スマホは地図領域が狭いので最大高さを抑えてはみ出しを防ぐ（超過分はスクロール）。
+  // 幅方向の省略はCSS(.pvDesc)側で画面幅に応じて行う。
+  m.bindPopup(popupHtml, { maxWidth: 280, maxHeight: window.innerWidth < 760 ? 200 : 320 });
   return m;
 }
 
@@ -114,15 +116,13 @@ export function initMap(el) {
   }
   map.fitBounds(bounds, { padding: [20, 20] });
 
-  // 凡例
+  // 凡例（見た目は .mapLegend に集約し、スマホでは style.css のmedia queryで小さくする）
   const legend = L.control({ position: "topright" });
   legend.onAdd = () => {
-    const div = L.DomUtil.create("div");
-    div.style.cssText =
-      "background:rgba(255,255,255,.92);padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.6;box-shadow:0 1px 3px rgba(0,0,0,.3)";
+    const div = L.DomUtil.create("div", "mapLegend");
     div.innerHTML = Object.keys(CATEGORY_COLORS)
       .map((k) =>
-        `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${CATEGORY_COLORS[k]};margin-right:4px"></span>${CATEGORY_LABELS[k]}`)
+        `<span class="legendDot" style="background:${CATEGORY_COLORS[k]}"></span>${CATEGORY_LABELS[k]}`)
       .join("<br>");
     return div;
   };
