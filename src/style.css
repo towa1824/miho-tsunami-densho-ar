@@ -61,7 +61,9 @@ body { display: flex; flex-direction: column; }
 }
 
 #stage { position: relative; flex: 1 1 auto; min-height: 200px; }
-#map { position: absolute; inset: 0; }
+/* z-index:0 で地図内のスタッキングを閉じ込める。ポップアップをコントロールより前面に
+   出しても、その重なりは #map 内に留まり AR全画面(#arView, z-index:1000)へは被らない。 */
+#map { position: absolute; inset: 0; z-index: 0; }
 
 /* AR起動中は全画面（合成シーン/カメラを大きく見せる） */
 #arView { position: fixed; inset: 0; background: #0b1f33; z-index: 1000; }
@@ -322,6 +324,43 @@ body { display: flex; flex-direction: column; }
 .leaflet-popup-content { font-size: 12px; line-height: 1.4; margin: 10px 12px; }
 .leaflet-popup-content .src { font-size: 10px; color: #777; }
 .leaflet-popup-content .src a { word-break: break-all; }
+
+/* 情報ボックス（ポップアップ）を凡例・ズーム等のLeafletコントロール(z-index:1000)より
+   前面に出し、閉じる×が常に見えてタップできるようにする。重なりは #map のスタッキング
+   コンテキスト内に閉じ込めてあるので AR全画面には被らない。 */
+.leaflet-popup-pane { z-index: 1100; }
+
+/* 凡例（topright）。見た目はここに集約し、スマホでは下の media query で少し小さくする */
+.mapLegend {
+  background: rgba(255, 255, 255, .92); padding: 6px 8px; border-radius: 6px;
+  font-size: 10px; line-height: 1.6; box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+.mapLegend .legendDot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px;
+}
+
+/* スマホ表示: 情報ボックスをコンパクトにし、凡例・閉じる×・下部カードと重ならないよう調整 */
+@media (max-width: 759px) {
+  /* 長い説明文は3行で省略（全文は下部の一覧カードで読める）。マップ領域の圧迫を防ぐ */
+  .leaflet-popup-content .pvDesc {
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  /* 閉じる×を約44pxのタップ領域・白丸に。.leaflet-popup-pane のz-indexで凡例より前面 */
+  .leaflet-container a.leaflet-popup-close-button {
+    width: 40px; height: 40px; top: 4px; right: 4px;
+    font: 700 22px/40px Tahoma, Verdana, sans-serif; color: #0d2b45;
+    background: rgba(255, 255, 255, .96); border-radius: 50%;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, .4);
+  }
+  .leaflet-container a.leaflet-popup-close-button:hover { background: #fff; color: #000; }
+  /* ×ボタンと本文が重ならないよう右側に余白を確保 */
+  .leaflet-popup-content { margin: 10px 44px 10px 12px; }
+  /* 凡例は少し小さく（情報ボックスと並んでも邪魔になりにくい） */
+  .mapLegend { font-size: 9px; line-height: 1.45; padding: 4px 6px; }
+  .mapLegend .legendDot { width: 8px; height: 8px; margin-right: 3px; }
+  /* 下部カードとマップの間に余白を足し、視覚的な食い込みを減らす */
+  #panel { padding-top: 12px; }
+}
 
 @media (min-width: 760px) {
   /* PC発表用: 地図を左に広く、タブ＋カードを右に固定（CSS Gridで安定配置） */
