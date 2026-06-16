@@ -1,0 +1,13 @@
+# Code Owners
+# このファイルで指定された owner は、対応するパスを変更する PR の
+# レビュー（承認）が必須になる（ruleset「Require review from Code Owners」と併用）。
+# CODEOWNERS はデフォルトブランチ(main)に存在して初めて有効になる。
+#
+# まずはリポジトリ全体を owner @towa1824 の責任範囲とする。
+# → main への取り込み（merge）は必ず @towa1824 の承認が必要になる。
+* @towa1824
+
+# 必要になれば、特定領域だけ別のレビュアーを割り当てられる（例。今は未使用）:
+# data/        @towa1824
+# src/         @towa1824
+# .github/     @towa1824

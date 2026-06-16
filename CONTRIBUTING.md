@@ -3,9 +3,23 @@
 ご関心ありがとうございます。本リポジトリは **平時の防災学習・避難訓練支援用の試作（研究）** です。
 **実災害時の避難誘導アプリではありません。** この前提を壊さない変更をお願いします。
 
+## 共同開発の進め方（ブランチ / fork と PR）
+
+- **`main` への直接 push / commit は禁止**です（ruleset で保護。誰も直接 push できません）。
+- 変更は次のいずれかで行い、**必ずプルリクエスト（PR）として提案**します:
+  - **作業ブランチ**（リポジトリへの write 権限がある共同開発者）: `git switch -c feature/xxx` で作業し PR を作成。
+  - **fork**（write 権限のない方・外部の方）: リポジトリを fork し、自分の fork のブランチで作業して PR を作成。
+- **`main` への取り込み（merge）は、owner `@towa1824` の承認後にのみ**行われます
+  （`.github/CODEOWNERS` ＋ ruleset「Require review from Code Owners」により、**owner のレビュー承認が必須**）。
+  他の共同開発者の承認だけでは merge できません。
+- **CI（`build & validate data`）が通らない PR は merge できません。** force push・branch 削除も ruleset で禁止です。
+- 共同開発者に **admin 権限は付与しません**（owner のみ）。権限は最小限（write もしくは fork）に保ちます。
+  - 信頼できる相手以外は collaborator（write）にせず、**fork からの PR 運用**を推奨します
+    （個人アカウントの repo では collaborator は write 権限を持つため）。
+
 ## 開発の流れ
 
-1. `main` への **直接 push は行いません**。作業ブランチを切り、**プルリクエスト（PR）経由**で変更します。
+1. 上記のとおり、作業ブランチまたは fork で変更し、**PR 経由**で提案します（`main` 直接 push は不可）。
 2. 変更前にローカルで動作確認:
    ```bash
    npm ci
