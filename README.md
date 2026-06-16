@@ -188,6 +188,8 @@ AR（現地目線ビュー）は原則 `exact_point` を主対象とし、`repre
 16. [静岡市『河内の大石』](https://www.city.shizuoka.lg.jp/okushizuoka/spot/s000090.html) — 安政地震翌年の豪雨で真富士山中腹から流出したと伝わる巨石（座標未入力・地図/ARには非表示）
 
 > 地図タイル・町並み3D（建物・道路・水域・海岸線、Overpass API）: © OpenStreetMap contributors（ODbL） ／ 経路（参考表示）: OSRM（routing.openstreetmap.de・徒歩/車プロファイル） ／ ジオコーディング: 国土地理院 住所検索API・OpenStreetMap Nominatim
+>
+> 出典・ライセンスの帰属表示は [NOTICE.md](NOTICE.md) にもまとめています。第三者のデータ・成果物には各提供元の条件が適用されます。
 
 ---
 
@@ -232,6 +234,15 @@ miho-tsunami-densho-ar/
 ├── tools/                # ジオコーディング・登記所地図からの座標抽出
 └── data_quality.md       # 要確認事項・ジオコーディング精度・今後の課題
 ```
+
+---
+
+## ライセンス
+
+- **コード**（`src/`, `tools/`, ビルド設定 等）: [MIT License](LICENSE)
+- **データ・ドキュメント**（`data/` と `*.md` のオリジナル記述）: [CC BY 4.0](LICENSE-DATA.md)
+- **第三者データ**（OpenStreetMap = ODbL、国土地理院・静岡市・静岡県・気象庁等の公的資料、査読論文 等）は
+  各提供元の利用条件が適用され、本リポジトリのライセンス対象外です（[NOTICE.md](NOTICE.md)）。
 
 ---
 
