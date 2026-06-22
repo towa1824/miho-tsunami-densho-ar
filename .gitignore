@@ -6,3 +6,8 @@ dist/
 
 # Claude Code / エディタのローカル設定（個人環境依存・共有不要）
 .claude/
+
+# ローカルの環境変数（APIキー等・共有しない）。雛形の .env.example のみ追跡する。
+.env
+.env.local
+.env.*.local

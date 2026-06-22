@@ -221,10 +221,21 @@ const OSRM_PROFILE = {
   car: "routed-car/route/v1/driving",  // 車道（車での避難・搬送の参考経路）
 };
 
-// 道路経路をOSRMから取得するだけの純関数（地図には描かない）。
-// AR起動・経路サマリの両方から使い、{ mode, geometry, distM, durS } を返す。
-export async function fetchRoute(pos, facility, travelMode = "foot") {
+// 経路プロバイダ: VITE_GOOGLE_MAPS_API_KEY があれば Google Routes API（道路距離・所要時間が高品質）、
+// 無ければ従来どおり OSRM デモサーバ。Google を使うのは「地図で経路」「現地目線で案内」で実際に
+// 表示する1本だけ（allowGoogle=true）。施設タブの候補ソートは無料枠節約のため OSRM のまま（既定 false）。
+const GOOGLE_API_KEY = import.meta.env?.VITE_GOOGLE_MAPS_API_KEY;
+const GOOGLE_TRAVEL_MODE = { foot: "WALK", car: "DRIVE" };
+
+// 道路経路を取得するだけの純関数（地図には描かない）。AR起動・経路サマリ・候補ソートから使い、
+// { mode, geometry(GeoJSON), distM, durS } を返す。allowGoogle かつキーがあれば Google を先に試し、
+// 失敗時は OSRM→直線へフォールバックする（キー無し・HTTPローカルの sim でも従来どおり動く）。
+export async function fetchRoute(pos, facility, travelMode = "foot", { allowGoogle = false } = {}) {
   if (!pos || !hasPos(facility)) return { mode: "none" };
+  if (allowGoogle && GOOGLE_API_KEY) {
+    const g = await fetchGoogleRoute(pos, facility, travelMode);
+    if (g) return g; // 失敗(null)時は下の OSRM→直線フォールバックに落とす
+  }
   const profile = OSRM_PROFILE[travelMode] ?? OSRM_PROFILE.foot;
   const url =
     `https://routing.openstreetmap.de/${profile}/` +
@@ -241,11 +252,66 @@ export async function fetchRoute(pos, facility, travelMode = "foot") {
   return { mode: "straight" };
 }
 
+// Google Routes API (Compute Routes Basic) で道路経路を1本取得し、返り値を OSRM と同じ形に整える。
+// Google は encoded polyline を返すので GeoJSON LineString([[lng,lat],...]) へデコードし、既存の
+// geometry / addDirectionArrows / AR の道筋描画にそのまま渡せるようにする。失敗時は null を返し、
+// 呼び出し側で OSRM→直線へフォールバックさせる（無料枠の節約と既存動作の維持）。
+async function fetchGoogleRoute(pos, facility, travelMode) {
+  try {
+    const res = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY,
+        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline",
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: pos.lat, longitude: pos.lng } } },
+        destination: { location: { latLng: { latitude: facility.lat, longitude: facility.lng } } },
+        travelMode: GOOGLE_TRAVEL_MODE[travelMode] ?? "WALK",
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const route = (await res.json()).routes?.[0];
+    const encoded = route?.polyline?.encodedPolyline;
+    if (!encoded) return null;
+    return {
+      mode: "google",
+      geometry: { type: "LineString", coordinates: decodePolyline(encoded) },
+      distM: route.distanceMeters ?? null,
+      durS: parseDurationS(route.duration),
+    };
+  } catch { return null; } // ネットワーク不達・タイムアウト → OSRM フォールバックへ
+}
+
+// Google Routes の duration は "123s" 形式の文字列。秒(number)へ変換する（不正時は null）。
+function parseDurationS(d) {
+  const m = typeof d === "string" && /^(\d+(?:\.\d+)?)s$/.exec(d.trim());
+  return m ? Math.round(parseFloat(m[1])) : null;
+}
+
+// Encoded Polyline Algorithm Format（精度1e5）をデコード。GeoJSON に合わせ [lng,lat] 順で返す。
+function decodePolyline(str) {
+  let index = 0, lat = 0, lng = 0;
+  const coords = [];
+  while (index < str.length) {
+    let result = 0, shift = 0, b;
+    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    result = 0; shift = 0;
+    do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+    coords.push([lng / 1e5, lat / 1e5]);
+  }
+  return coords;
+}
+
 export async function showRoute(pos, facility, travelMode = "foot") {
   clearRoute();
   if (!hasPos(facility)) return { mode: "none" };
-  const r = await fetchRoute(pos, facility, travelMode);
-  if (r.mode === "osrm") {
+  const r = await fetchRoute(pos, facility, travelMode, { allowGoogle: true });
+  if (r.geometry) {
     routeLine = L.geoJSON(r.geometry, {
       style: { color: ROUTE_COLOR[travelMode] ?? "#0d47a1", weight: 5, opacity: 0.85 },
     }).addTo(map);

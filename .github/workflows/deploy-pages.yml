@@ -51,7 +51,11 @@ jobs:
 
       # GitHub Pages はサブパス（/<リポジトリ名>/）配信のため base を合わせる。
       # リポジトリ名はイベントから取得し、リネームしても追従させる。
+      # VITE_GOOGLE_MAPS_API_KEY（任意）: リポジトリ Secrets に登録すると経路取得が Google Routes API に
+      # 切り替わる。未登録なら空のまま → OSRM デモサーバで従来どおりビルドされる（鍵はリファラー制限で保護）。
       - name: Build
+        env:
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: npm run build -- --base=/${{ github.event.repository.name }}/
 
       - name: Setup Pages

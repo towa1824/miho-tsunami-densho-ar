@@ -32,6 +32,9 @@
 - 町並み3D（src/town.js）は OSM Overpass API（無料・APIキー不要）。結果は localStorage に7日
   キャッシュし連続リクエストしない。「© OpenStreetMap contributors」表記（#arAttrib・注意事項タブ）を
   消さない。建物の形・高さはタグからの推定を含む概形（=正確な実形ではない）として扱う。
+- 経路（道順）は既定 **OSRM デモサーバ**（無料・キー不要）。`VITE_GOOGLE_MAPS_API_KEY` がある時だけ
+  「地図で経路 / 現地目線で案内」で表示する**1本**を **Google Routes API** に切替（=道路距離の品質向上）。地図タイルは
+  Leaflet+OSM のまま、**候補ソートは OSRM 維持**（無料枠節約）。キー無し/失敗時は OSRM→直線へフォールバック（src/map.js）。
 
 ## Part 3: Git / PR 運用
 

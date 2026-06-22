@@ -214,7 +214,7 @@ function showRouteSummary(f, r, loading) {
   if (r && r.durS != null) min = Math.max(1, Math.round(r.durS / 60));
   else min = travelTimeMin(distM, state.travelMode);
   const via = r && r.mode === "straight" ? "（直線参考・道路経路は取得できず）"
-    : r && r.mode === "osrm" ? "（参考経路・道路距離。徒歩最短ではありません）" : "";
+    : r && r.geometry ? "（参考経路・道路距離。徒歩最短ではありません）" : "";
   el.routeSummary.hidden = false;
   el.routeSummary.innerHTML =
     `🏁 <b>${f.name}</b>まで ${label} <b>${formatDuration(min)}</b>` +
@@ -391,18 +391,19 @@ async function startAR(facility) {
   el.arOverlay.innerHTML = `<div class="arNavCard"><div class="arNavBody" style="display:block">経路を計算中…</div></div>`;
   let r = { mode: "straight" };
   if (state.pos) {
-    try { r = await MapView.fetchRoute(state.pos, facility, state.travelMode); } catch { /* 直線参考へ */ }
+    // 「現地目線で案内」で表示する1本 → Google Routes を許可（キー無し/失敗時は OSRM→直線）
+    try { r = await MapView.fetchRoute(state.pos, facility, state.travelMode, { allowGoogle: true }); } catch { /* 直線参考へ */ }
   }
   state.arRoute = r;
   state.routeGeometry = r.geometry ?? null;
-  state.routedFacilityId = r.mode === "osrm" ? facility.id : null;
+  state.routedFacilityId = r.geometry ? facility.id : null;
   try {
     // デモ現在地は fakeGps（屋内・発表・検証用）、GPSモードは実機GPS
     const fakePos = state.usingDemo ? state.pos : null;
     // 道路経路が取れた時だけ青ルートを渡す（取れなければ AR 側で灰破線の直線参考）
     await AR.startAR(el.arHolder, {
       fakePos, facility, mode: state.arMode,
-      routeGeometry: r.mode === "osrm" ? r.geometry : null,
+      routeGeometry: r.geometry ?? null,
     });
     updateArOverlay();
     // 方位HUD・ミニマップを定期更新

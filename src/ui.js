@@ -264,12 +264,13 @@ export function arOverlayHtml(f, nav, t, travelMode = "foot", expanded = false) 
   const heightLine = f.evacuation_height_m != null
     ? `避難可能高さ ${esc(f.evacuation_height_m)}m ／ ${esc(f.evacuation_place)}`
     : `避難可能場所: ${esc(f.evacuation_place)}`;
-  const hasRoad = nav.mode === "osrm";
+  const hasRoad = nav.mode === "osrm" || nav.mode === "google";
   const tLabel = TRAVEL_LABEL[travelMode];
   const min = nav.durS != null ? Math.max(1, Math.round(nav.durS / 60)) : travelTimeMin(nav.distM, travelMode);
   const totalStr = nav.distM != null ? formatDist(nav.distM) : "-";
   const remainStr = nav.remainingM != null ? formatDist(nav.remainingM) : totalStr;
-  const via = hasRoad ? "OSM道路経路・参考" : "直線参考（道路経路なし）";
+  const via = nav.mode === "google" ? "Google経路・参考"
+    : hasRoad ? "OSM道路経路・参考" : "直線参考（道路経路なし）";
   // 折りたたみ時に常時見える1行サマリ（次アクション＋残り）
   const head = `→ ${esc(f.name)}　のこり<b>${remainStr}</b>${nav.nextText ? `　${esc(nav.nextText)}` : ""}`;
   const body = `
@@ -278,7 +279,7 @@ export function arOverlayHtml(f, nav, t, travelMode = "foot", expanded = false) 
     <div class="navRow">種別: ${esc(f.type)}｜${heightLine}</div>
     <div class="why">理由: ${esc(f.why)}</div>
     ${t ? `<div class="caution">📜 近くの伝承: ${esc(t.title)}（約${formatDist(t._dist)}）— 補助情報です。</div>` : ""}
-    <div class="navSrc">経路は OpenStreetMap / OSRM 由来の<b>参考表示</b>です（${esc(tLabel)}プロファイル）。
+    <div class="navSrc">経路は ${nav.mode === "google" ? "Google Routes" : "OpenStreetMap / OSRM"} 由来の<b>参考表示</b>です（${esc(tLabel)}）。
       徒歩避難の正式経路ではありません。実際の避難は公式情報に従ってください。</div>`;
   return `<div class="arNavCard${expanded ? " expanded" : ""}">
     <button class="arNavToggle" type="button" data-act="toggleNav">
