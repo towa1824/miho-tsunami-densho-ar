@@ -1,6 +1,6 @@
 // 町並み3D（OpenStreetMap / Overpass API・無料/APIキー不要）
 // 現地目線ビューに実際の町並み（建物・道路・水域・緑地・砂浜・海岸線）を立体で重ねる。
-// - 建物・道路・公園の名前（OSM name）をラベルとして3D空間に表示する（addLabels）
+// - 建物・道路・公園の名前に加え、店舗・施設などの名前付きPOI(OSMノード)もラベル表示する（addLabels）
 // - 表示中は「© OpenStreetMap contributors」を明示する（ODbL。#arAttrib / 注意事項タブ）
 // - 建物高さは height → building:levels×3m → 種別既定値 の順で推定（=概形。実物と異なりうる）
 // - 取得結果は localStorage に7日キャッシュし、同一地点での再リクエストを避ける
@@ -12,11 +12,11 @@ const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter", // 本家が混雑時のミラー
 ];
-const CACHE_PREFIX = "town.v2:"; // v2: 地物名(name)を保持するよう構造変更
+const CACHE_PREFIX = "town.v3:"; // v3: 名前付きPOI(店舗・施設ノード)のラベルを追加
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 
 // 取得半径[m]。目線の見通し＋目的地周辺をカバーしつつデータ量を抑える
-const R_BUILDING = 650, R_ROAD = 800, R_AREA = 900, R_COAST = 1600;
+const R_BUILDING = 650, R_ROAD = 800, R_AREA = 900, R_COAST = 1600, R_POI = 700;
 
 const FOOT = new Set(["footway", "path", "pedestrian", "cycleway", "steps", "track"]);
 const ROAD_W = {
@@ -30,6 +30,13 @@ function buildQuery({ lat, lng }) {
   return `[out:json][timeout:25];(
 way["building"]${at(R_BUILDING)};
 way["highway"]${at(R_ROAD)};
+node["name"]["amenity"]${at(R_POI)};
+node["name"]["shop"]${at(R_POI)};
+node["name"]["office"]${at(R_POI)};
+node["name"]["tourism"]${at(R_POI)};
+node["name"]["leisure"]${at(R_POI)};
+node["name"]["healthcare"]${at(R_POI)};
+node["name"]["craft"]${at(R_POI)};
 way["natural"="water"]${at(R_AREA)};
 way["natural"~"^(wood|beach|sand)$"]${at(R_AREA)};
 way["landuse"~"^(forest|grass|meadow|recreation_ground|village_green)$"]${at(R_AREA)};
@@ -62,12 +69,35 @@ function colorClass(tags) {
 
 const r6 = (v) => Math.round(v * 1e6) / 1e6;
 
+// 名前付きPOIノードのアイコン（種別ごと。店舗・施設名を見分けやすくする）
+function poiIcon(tags) {
+  const a = tags.amenity;
+  if (tags.healthcare || ["hospital", "clinic", "pharmacy", "dentist", "doctors"].includes(a)) return "🏥";
+  if (["school", "kindergarten", "university", "college"].includes(a)) return "🏫";
+  if (["restaurant", "cafe", "fast_food", "food_court", "bar", "pub"].includes(a)) return "🍴";
+  if (a === "post_office") return "📮";
+  if (["bank", "atm"].includes(a)) return "🏦";
+  if (a === "fuel") return "⛽";
+  if (a === "place_of_worship") return "⛩️";
+  if (tags.tourism) return "📸";
+  if (tags.shop) return "🏪";
+  if (tags.office) return "🏢";
+  if (tags.leisure) return "🏞️";
+  return "📍";
+}
+
 // Overpass応答 → 描画に必要な最小構造（キャッシュもこの形）
 function parseOsm(json) {
-  const town = { buildings: [], roads: [], water: [], green: [], sand: [], coast: [] };
+  const town = { buildings: [], roads: [], water: [], green: [], sand: [], coast: [], pois: [] };
   for (const el of json.elements ?? []) {
-    if (el.type !== "way" || !Array.isArray(el.geometry) || el.geometry.length < 2) continue;
     const tags = el.tags ?? {};
+    // 名前付きPOI（店舗・施設などのOSMノード）。建物polygonにnameが無い店も名前を拾える。
+    if (el.type === "node") {
+      const nm = tags["name:ja"] || tags.name;
+      if (nm && el.lat != null) town.pois.push({ name: nm, lat: r6(el.lat), lng: r6(el.lon), icon: poiIcon(tags) });
+      continue;
+    }
+    if (el.type !== "way" || !Array.isArray(el.geometry) || el.geometry.length < 2) continue;
     const pts = el.geometry.map((p) => [r6(p.lat), r6(p.lon)]);
     const name = tags["name:ja"] || tags.name || null; // 地物名（日本語名を優先）
     if (tags.building) {
@@ -167,7 +197,7 @@ export function buildTownGroup(town, origin, groundY) {
   // 海岸線: OSMの規約で「進行方向の右側が水域」→ 右側へ帯を張り海の手がかりに
   addFlat(g, FLAT.coast, coastGeo(town.coast, enu), groundY);
 
-  // 建物・道路・公園の名前ラベル（OSM name。© OpenStreetMap contributors）
+  // 名前ラベル（建物・道路・公園 ＋ 店舗・施設POI。OSM name。© OpenStreetMap contributors）
   addLabels(g, town, origin, groundY);
   return g;
 }
@@ -319,7 +349,7 @@ function dedupeByName(arr) {
   return out;
 }
 
-// 建物名・道路名・公園名を3D空間に配置（近い順・カテゴリ別に上限を設けて煩雑にしない）
+// 名前ラベルを3D空間に配置（建物名・店舗/施設POI・道路名・公園名。近い順・カテゴリ別に上限を設けて煩雑にしない）
 function addLabels(g, town, origin, groundY) {
   const enu = (lat, lng) => {
     const { east, north } = toEastNorth(lat, lng, origin.lat, origin.lng);
@@ -337,7 +367,7 @@ function addLabels(g, town, origin, groundY) {
     if (dist(x, z) > MAXD) continue;
     parks.push({ name: gr.name, x, z, d: dist(x, z) });
   }
-  dedupeByName(parks.sort((a, b) => a.d - b.d)).slice(0, 8).forEach((p) =>
+  dedupeByName(parks.sort((a, b) => a.d - b.d)).slice(0, 10).forEach((p) =>
     place(makeLabel("🌳 " + p.name, { bg: "rgba(34,90,40,.82)" }), p.x, p.z, groundY + 2.2));
 
   // 建物名（名前付きのみ・屋根の上）
@@ -348,8 +378,18 @@ function addLabels(g, town, origin, groundY) {
     if (dist(x, z) > MAXD) continue;
     blds.push({ name: b.name, x, z, y: groundY + b.h + 1.4, d: dist(x, z) });
   }
-  dedupeByName(blds.sort((a, b) => a.d - b.d)).slice(0, 16).forEach((b) =>
+  dedupeByName(blds.sort((a, b) => a.d - b.d)).slice(0, 20).forEach((b) =>
     place(makeLabel(b.name, { bg: "rgba(20,40,70,.82)" }), b.x, b.z, b.y));
+
+  // 店舗・施設などの名前付きPOI（OSMノード）。建物名だけでは出ない店名・施設名を拾う＝今回の主な増分。
+  const pois = [];
+  for (const p of town.pois ?? []) {
+    const [x, z] = enu(p.lat, p.lng);
+    if (dist(x, z) > MAXD) continue;
+    pois.push({ name: `${p.icon} ${p.name}`, x, z, d: dist(x, z) });
+  }
+  dedupeByName(pois.sort((a, b) => a.d - b.d)).slice(0, 30).forEach((p) =>
+    place(makeLabel(p.name, { bg: "rgba(45,55,70,.82)", fontPx: 26 }), p.x, p.z, groundY + 3));
 
   // 道路名（同名は原点に最も近い中点1つに集約・低い位置に）
   const byRoad = new Map();
@@ -361,6 +401,6 @@ function addLabels(g, town, origin, groundY) {
     const cur = byRoad.get(r.name), d = dist(x, z);
     if (!cur || d < cur.d) byRoad.set(r.name, { name: r.name, x, z, d });
   }
-  [...byRoad.values()].sort((a, b) => a.d - b.d).slice(0, 12).forEach((r) =>
+  [...byRoad.values()].sort((a, b) => a.d - b.d).slice(0, 14).forEach((r) =>
     place(makeLabel(r.name, { bg: "rgba(60,60,68,.78)", fontPx: 25 }), r.x, r.z, groundY + 0.8));
 }
