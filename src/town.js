@@ -321,6 +321,9 @@ function bufferGeo(pos) {
 
 // ---------------- 名前ラベル ----------------
 
+// onBeforeRenderでのラベル拡縮に使う作業用ベクトル（毎フレーム再利用）
+const _wp = new THREE.Vector3();
+
 // 常にカメラを向く文字ラベル（地物名表示用）。避難施設ラベルとは別スタイルで控えめに。
 function makeLabel(text, { color = "#fff", bg = "rgba(40,50,60,.82)", fontPx = 30 } = {}) {
   const pad = 10;
@@ -340,7 +343,18 @@ function makeLabel(text, { color = "#fff", bg = "rgba(40,50,60,.82)", fontPx = 3
   tex.anisotropy = 4;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
   sp.renderOrder = 3;
-  sp.scale.set(w * 0.022, h * 0.022, 1); // 1px ≒ 2.2cm（遠くでも読める大きさ）
+  sp.scale.set(w * 0.022, h * 0.022, 1); // 近距離の基準サイズ（1px ≒ 2.2cm）
+  // 遠くの文字が小さく読めない対策：遠いラベルほど、カメラ距離に応じて拡大し画面上ほぼ一定の
+  // 高さに見せる（近距離は基準サイズのまま＝下限クランプ。歩行・ズームに毎フレーム追従）。
+  const aspect = w / h, baseH = h * 0.022;
+  const TARGET = 0.055, MAXH = 80; // 画面高に対するラベル高の目安(約5.5%) / ワールド上限[m]
+  sp.onBeforeRender = (renderer, scene, camera) => {
+    _wp.setFromMatrixPosition(sp.matrixWorld);
+    const D = camera.position.distanceTo(_wp);
+    const tan = Math.tan(THREE.MathUtils.degToRad((camera.fov ?? 60) / 2));
+    const hW = Math.min(MAXH, Math.max(baseH, TARGET * 2 * D * tan));
+    sp.scale.set(aspect * hW, hW, 1);
+  };
   return sp;
 }
 
