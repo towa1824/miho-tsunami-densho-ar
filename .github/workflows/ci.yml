@@ -23,7 +23,7 @@ jobs:
     steps:
       # 供給網対策として SHA 固定にする場合は @<commit-sha> へ置き換える（下記はメジャータグ）
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
