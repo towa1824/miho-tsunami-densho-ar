@@ -16,7 +16,7 @@
   "dependencies": {
     "leaflet": "^1.9.4",
     "locar": "^0.1.2",
-    "three": "^0.169.0"
+    "three": "^0.184.0"
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^1.2.0",
