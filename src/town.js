@@ -12,11 +12,14 @@ const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter", // 本家が混雑時のミラー
 ];
-const CACHE_PREFIX = "town.v4:"; // v4: POI取得タグ拡張・ラベル上限緩和（出せるだけ表示）
+// v5: 取得半径拡大・キャッシュキー細分化(toFixed4)・進行に応じたチャンク追加ロード対応。
+// prefix更新で旧キャッシュは自然に無効化され、再取得される。
+const CACHE_PREFIX = "town.v5:";
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 
-// 取得半径[m]。目線の見通し＋目的地周辺をカバーしつつデータ量を抑える
-const R_BUILDING = 650, R_ROAD = 800, R_AREA = 900, R_COAST = 1600, R_POI = 900;
+// 取得半径[m]。目線の見通し＋目的地周辺をカバーしつつデータ量を抑える。
+// R_BUILDING はチャンク1セル（ar.js 側 ~700m四方）の対角を確実に覆える大きさにする。
+const R_BUILDING = 750, R_ROAD = 800, R_AREA = 900, R_COAST = 1600, R_POI = 900;
 
 const FOOT = new Set(["footway", "path", "pedestrian", "cycleway", "steps", "track"]);
 const ROAD_W = {
@@ -59,7 +62,7 @@ function estHeight(tags) {
   if (["house", "detached", "residential", "hut", "shed", "garage"].includes(t)) return 5;
   if (["apartments", "school", "hospital", "hotel", "public", "civic"].includes(t)) return 11;
   if (["industrial", "warehouse", "retail", "commercial"].includes(t)) return 8;
-  return 6;
+  return 7; // 高さ不明の一般建物。少し高めにして地面に埋もれず見えるように（=概形）
 }
 
 // 建物の色分け 0=住宅系 1=大型(集合住宅・公共) 2=産業/商業 3=その他
@@ -121,7 +124,9 @@ function parseOsm(json) {
 
 // 町並みデータ取得（localStorageキャッシュ → Overpass本家 → ミラー）
 export async function loadTown(origin) {
-  const key = `${CACHE_PREFIX}${origin.lat.toFixed(3)},${origin.lng.toFixed(3)}`;
+  // キャッシュキーは toFixed(4)（≒11m）まで細かくし、チャンク中心ごとに別キャッシュとして扱う。
+  const key = `${CACHE_PREFIX}${origin.lat.toFixed(4)},${origin.lng.toFixed(4)}`;
+  if (import.meta.env?.DEV) window.__arTownCacheKey = key;
   try {
     const hit = JSON.parse(localStorage.getItem(key) ?? "null");
     if (hit && Date.now() - hit.t < CACHE_TTL_MS) return hit.town;
@@ -147,7 +152,9 @@ export async function loadTown(origin) {
 
 // ---------------- 3D化 ----------------
 
-const B_BASE = [0xd9cfc2, 0xc6ccd8, 0xb9c4c9, 0xcfc9c0]; // 住宅/大型/産業/他
+// 建物色（住宅/大型/産業/他）。明るい地面（淡緑）と区別しやすいよう、やや濃いめにする。
+// ただし避難先(青/緑/紫)・経路(青)・ガイド矢印より目立たない無彩色寄りに留める。
+const B_BASE = [0xc2b6a4, 0xadb6c4, 0x9fadb4, 0xb7afa3]; // 住宅/大型/産業/他
 // 地面レイヤーの重なり順。renderOrderを負にして既存の道筋ストリップ等を常に上に保つ
 const FLAT = {
   coast: { color: 0x6fa8cc, opacity: 0.80, lift: 0.004, order: -9 },
@@ -158,23 +165,32 @@ const FLAT = {
   foot:  { color: 0xb8b0a2, opacity: 0.85, lift: 0.014, order: -4 },
 };
 
-// 町並みのGroupを構築（origin=ENU原点、groundY=地面の高さ）。ライトも同梱し自己完結。
-export function buildTownGroup(town, origin, groundY) {
+// 町並みのGroupを構築（origin=ENU原点、groundY=地面の高さ）。
+// opts.cellHalf を指定すると建物・道路を中心 origin の ±cellHalf[m] セル内にクリップする
+// （チャンクをタイル状に並べ、隣接チャンクとの重複描画＝z-fighting/二重塗りを防ぐ）。
+// opts.areas=false で水域・緑地・砂浜・海岸線を描かない（広域の地形は最初の1チャンクが担当）。
+// opts.addLights=false でライトを足さない（ライトはシーン全体に効くので最初の1チャンクのみ）。
+export function buildTownGroup(town, origin, groundY, { addLights = true, cellHalf = Infinity, areas = true } = {}) {
   const g = new THREE.Group();
   g.name = "osmTown";
   const enu = (lat, lng) => {
     const { east, north } = toEastNorth(lat, lng, origin.lat, origin.lng);
     return [east, -north]; // 世界座標は 北=-Z / 東=+X（CLAUDE.md）
   };
+  const inCell = (x, z) => Math.abs(x) <= cellHalf && Math.abs(z) <= cellHalf;
 
   // 建物: footprint押し出しを1メッシュに結合（頂点色＋Lambertの陰影で立体感）。
-  // 市街地（清水港など）は建物数が多くビルドが重いので、近い順に上限を設けてフリーズを防ぐ。
+  // 重心がセル内の建物だけを対象にし（タイル化）、中心に近い順で MAX_BUILDINGS まで（フリーズ防止）。
+  // ※距離判定は footprint先頭点ではなく重心。大きな/複雑な建物が誤って落ちるのを防ぐ。
   const MAX_BUILDINGS = 1400;
-  const blds = town.buildings.length > MAX_BUILDINGS
-    ? town.buildings
-        .map((b) => { const [x, z] = enu(b.pts[0][0], b.pts[0][1]); return { b, d: x * x + z * z }; })
-        .sort((p, q) => p.d - q.d).slice(0, MAX_BUILDINGS).map((x) => x.b)
-    : town.buildings;
+  const cand = [];
+  for (const b of town.buildings) {
+    const [cx, cz] = centroidEnu(b.pts, enu);
+    if (!inCell(cx, cz)) continue;
+    cand.push({ b, d: cx * cx + cz * cz });
+  }
+  cand.sort((p, q) => p.d - q.d);
+  const blds = (cand.length > MAX_BUILDINGS ? cand.slice(0, MAX_BUILDINGS) : cand).map((x) => x.b);
   const geos = [];
   for (const b of blds) {
     const geo = footprintGeo(b.pts, b.h, enu);
@@ -186,25 +202,40 @@ export function buildTownGroup(town, origin, groundY) {
     mesh.position.y = groundY;
     g.add(mesh);
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 30),
-      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.16 }));
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28 }));
     edges.position.y = groundY;
     g.add(edges);
-    // Lambert用ライト（MeshBasicの既存表示には影響しない）
-    g.add(new THREE.HemisphereLight(0xe9f3ff, 0x9a9183, 1.35));
-    const sun = new THREE.DirectionalLight(0xfff2dd, 1.8);
-    sun.position.set(180, 420, 240); // 南東の上空から（北=-Z）
-    g.add(sun);
+    if (addLights) {
+      // Lambert用ライト（MeshBasicの既存表示には影響しない）。シーン全体に効くので最初の1回だけ。
+      g.add(new THREE.HemisphereLight(0xe9f3ff, 0x9a9183, 1.35));
+      const sun = new THREE.DirectionalLight(0xfff2dd, 1.8);
+      sun.position.set(180, 420, 240); // 南東の上空から（北=-Z）
+      g.add(sun);
+      g.userData.hasLights = true;
+    }
   }
 
-  addFlat(g, FLAT.road, roadsGeo(town.roads.filter((r) => !r.f), enu), groundY);
-  addFlat(g, FLAT.foot, roadsGeo(town.roads.filter((r) => r.f), enu), groundY);
-  addFlat(g, FLAT.water, polysGeo(town.water, enu), groundY);
-  addFlat(g, FLAT.green, polysGeo(town.green.map((x) => x.pts), enu), groundY);
-  addFlat(g, FLAT.sand, polysGeo(town.sand, enu), groundY);
-  // 海岸線: OSMの規約で「進行方向の右側が水域」→ 右側へ帯を張り海の手がかりに
-  addFlat(g, FLAT.coast, coastGeo(town.coast, enu), groundY);
+  // 道路: 中点がセル内のものだけ（建物と同じくタイル化）
+  const midIn = (r) => {
+    const m = r.pts[Math.floor(r.pts.length / 2)];
+    const [x, z] = enu(m[0], m[1]);
+    return inCell(x, z);
+  };
+  const roadsC = town.roads.filter(midIn);
+  addFlat(g, FLAT.road, roadsGeo(roadsC.filter((r) => !r.f), enu), groundY);
+  addFlat(g, FLAT.foot, roadsGeo(roadsC.filter((r) => r.f), enu), groundY);
+
+  // 水域・緑地・砂浜・海岸線（広域の地形）は重複描画を避けるため最初の1チャンクのみ描く。
+  if (areas) {
+    addFlat(g, FLAT.water, polysGeo(town.water, enu), groundY);
+    addFlat(g, FLAT.green, polysGeo(town.green.map((x) => x.pts), enu), groundY);
+    addFlat(g, FLAT.sand, polysGeo(town.sand, enu), groundY);
+    // 海岸線: OSMの規約で「進行方向の右側が水域」→ 右側へ帯を張り海の手がかりに
+    addFlat(g, FLAT.coast, coastGeo(town.coast, enu), groundY);
+  }
 
   // 名前ラベル（建物・道路・公園 ＋ 店舗・施設POI。OSM name。© OpenStreetMap contributors）
+  // 近傍(MAXD=150m)だけ＝チャンク中心が離れていれば実質重複しない。
   addLabels(g, town, origin, groundY);
   return g;
 }

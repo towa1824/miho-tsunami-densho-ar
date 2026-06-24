@@ -687,8 +687,9 @@ function buildSimWorld() {
   simWorld = g;
   simBuilt = true;
 
-  // 実際の町並み（OpenStreetMap・無料）を非同期で読み込んで重ねる
-  addTownAsync(g);
+  // 実際の町並み（OpenStreetMap・無料）を非同期で読み込んで重ねる。
+  // 初期位置のチャンクを読み込み、以後は歩いた位置に応じて追加ロードする（checkTownChunks）。
+  ensureTownAround(simOrigin);
 
   // カメラに追従して目的地を指す浮遊ガイド矢印（小さめ・半透明・足元寄り）
   guideArrow = buildArrow(0xff5252, 0.85);
@@ -718,7 +719,7 @@ function buildLearnWorld() {
   scene.add(g);
   simWorld = g;
   simBuilt = true;
-  addTownAsync(g); // 実際の町並み（OSM）も重ねる
+  ensureTownAround(simOrigin); // 実際の町並み（OSM）も重ねる（以後は移動に応じて追加ロード）
 }
 
 // 学習で深掘りする伝承の強調表示（橙の柱＋大ラベル＋「ここまで水が来た」ゲージ＋震度）
@@ -745,20 +746,134 @@ function learnSignboard(t) {
   return grp;
 }
 
-// OpenStreetMapの町並み3Dを読み込んでsimWorldへ追加。失敗してもビュー自体は続行する。
-async function addTownAsync(world) {
-  status("町並みデータ（OpenStreetMap）を読み込み中…", "info");
+// --- 町並み(OSM)の進行追従ロード -------------------------------------------------
+// 初期位置で1チャンク読み込み、検証モードで歩いて離れたら現在位置(と経路前方)の周辺を
+// 追加ロードする。各チャンクは ~TOWN_CELL_M 四方にクリップしてタイル状に並べ重複描画を避ける。
+// 広域の地形(海・緑地)とライトは最初のチャンクだけが担当し、二重描画・多重ライトを防ぐ。
+const TOWN_CELL_M = 800;            // チャンク中心グリッド間隔[m]（=セルの一辺。対角566m < R_BUILDING）
+const TOWN_CELL_HALF = TOWN_CELL_M / 2;
+const TOWN_PRUNE_M = 1500;          // 現在地からこの距離より遠い通常チャンクは破棄(メモリ抑制)
+const TOWN_PREFETCH_AHEAD_M = 500;  // 経路上この距離先（≒次セル）のチャンクも先読み
+const TOWN_CHECK_INTERVAL_MS = 600; // onSimMoveでの追加ロード判定の間引き間隔
+
+let townChunks = [];         // [{ key, lat, lng, group, loading, failed, hasLights, hasAreas }]
+let townLightsAdded = false; // ライトはシーン全体に効くので最初の建物チャンクで1回だけ
+let townAreasAdded = false;  // 広域の地形(海・水域・緑地)は最初の成功チャンクで1回だけ
+let townLastStats = null;    // 直近ロードの件数(DEV/ステータス用)
+let lastTownCheckT = 0;      // 追加ロード判定の間引き用タイムスタンプ
+
+// 位置を simOrigin 基準ENUの TOWN_CELL_M グリッドにスナップしてチャンク中心を決める。
+// 整数グリッド座標(gx,gz)[m]をキーにするので決定的・冪等で、クリップ枠(±cellHalf)と必ず一致する
+// （緯度経度度数でのスナップは経度スケールが緯度依存で非冪等になり、セル境界がずれるため避ける）。
+function townGridKey(lat, lng) {
+  const { east, north } = toEastNorth(lat, lng, simOrigin.lat, simOrigin.lng);
+  const gx = Math.round(east / TOWN_CELL_M) * TOWN_CELL_M;
+  const gz = Math.round(north / TOWN_CELL_M) * TOWN_CELL_M;
+  const c = fromEastNorth(gx, gz, simOrigin.lat, simOrigin.lng);
+  return { key: `${gx},${gz}`, lat: c.lat, lng: c.lng };
+}
+// チャンク中心(緯度経度) → simOrigin基準のENUオフセット（北=-Z）
+function townChunkOffset(lat, lng) {
+  const { east, north } = toEastNorth(lat, lng, simOrigin.lat, simOrigin.lng);
+  return { x: east, z: -north };
+}
+function townLoading() { return townChunks.some((c) => c.loading); }
+
+// 指定位置周辺の町並みチャンクを必要なら読み込む（sim/learnのみ）。
+function ensureTownAround(pos) {
+  if (!pos || !simWorld || !simOrigin) return;
+  if (mode !== "sim" && mode !== "learn") return;
+  const gk = townGridKey(pos.lat, pos.lng);
+  if (townChunks.some((c) => c.key === gk.key)) return; // 同じグリッドは取得済/取得中/失敗済
+  if (townLoading()) return;                            // 同時取得は1件まで（Overpassに優しく）
+  loadTownChunk(gk);
+}
+
+async function loadTownChunk(gk) {
+  const initial = townChunks.length === 0;
+  const chunk = {
+    key: gk.key, lat: gk.lat, lng: gk.lng, group: null,
+    loading: true, failed: false, hasLights: false, hasAreas: false,
+  };
+  townChunks.push(chunk);
+  const myWorld = simWorld;
+  const center = { lat: gk.lat, lng: gk.lng };
+  const areasReq = !townAreasAdded;
+  status(initial ? "町並みデータ（OpenStreetMap）を読み込み中…" : "移動先周辺の町並みを読み込み中…", "info");
   try {
-    const town = await loadTown(simOrigin);
-    // 読み込み中に終了・再起動していたら古いシーンには足さない
-    if (!started || (mode !== "sim" && mode !== "learn") || simWorld !== world) return;
-    world.add(buildTownGroup(town, simOrigin, GROUND_Y));
-    status("実際の町並みを立体表示中（建物の形と高さはOpenStreetMapによる概形）" +
-      "© OpenStreetMap contributors", "info");
-  } catch {
-    if (!started || simWorld !== world) return;
-    status("町並みデータを取得できませんでした（オフライン？）。施設・伝承のみ表示します。", "warn");
+    const town = await loadTown(center);
+    // 読み込み中に終了・モード変更・再構築していたら古いシーンには足さない
+    if (!started || (mode !== "sim" && mode !== "learn") || simWorld !== myWorld) { chunk.loading = false; return; }
+    const grp = buildTownGroup(town, center, GROUND_Y, {
+      addLights: !townLightsAdded, cellHalf: TOWN_CELL_HALF, areas: areasReq,
+    });
+    const off = townChunkOffset(gk.lat, gk.lng);
+    grp.position.set(off.x, 0, off.z); // チャンク中心基準で組んだ座標を simOrigin 基準へ平行移動
+    myWorld.add(grp);
+    chunk.group = grp; chunk.loading = false;
+    chunk.hasLights = !!grp.userData.hasLights;
+    chunk.hasAreas = areasReq;
+    if (chunk.hasLights) townLightsAdded = true;
+    if (areasReq) townAreasAdded = true;
+    townLastStats = {
+      buildings: town.buildings.length, roads: town.roads.length,
+      pois: (town.pois || []).length, key: gk.key,
+    };
+    if (import.meta.env?.DEV) { window.__arTownChunks = townChunks; window.__arTownLastStats = townLastStats; }
+    if (town.buildings.length === 0) {
+      status("この周辺のOSM建物データが見つかりませんでした（道路・地形のみ表示）。© OpenStreetMap contributors", "warn");
+    } else {
+      status(`町並みを表示中: 建物 ${town.buildings.length}件 / 道路 ${town.roads.length}件（OSMによる概形）© OpenStreetMap contributors`, "info");
+    }
+    pruneTownChunks();
+  } catch (e) {
+    chunk.loading = false; chunk.failed = true;
+    if (import.meta.env?.DEV) (window.__arTownLoadLog ||= []).push({ key: gk.key, err: String(e) });
+    if (!started || simWorld !== myWorld) return;
+    status("町並みデータを取得できませんでした。通信状況を確認してください。施設・経路・伝承は表示を続けます。", "warn");
   }
+}
+
+// 現在地から遠い通常チャンクを破棄（ライト/広域地形を持つ基準チャンクは残す）。
+function pruneTownChunks() {
+  const eff = effectiveLatLng();
+  if (!eff) return;
+  for (const c of townChunks) {
+    if (c.hasLights || c.hasAreas || c.loading || !c.group) continue;
+    if (distanceM(c.lat, c.lng, eff.lat, eff.lng) > TOWN_PRUNE_M) disposeTownChunk(c);
+  }
+  // 破棄済(group無し・失敗でない)を配列から除く（再訪時に再ロード=localStorageキャッシュで安価）
+  townChunks = townChunks.filter((c) => c.loading || c.group || c.failed);
+}
+function disposeTownChunk(chunk) {
+  const grp = chunk.group;
+  if (!grp) return;
+  grp.traverse((o) => {
+    o.geometry?.dispose?.();
+    const m = o.material;
+    if (Array.isArray(m)) m.forEach((x) => { x.map?.dispose?.(); x.dispose?.(); });
+    else if (m) { m.map?.dispose?.(); m.dispose?.(); }
+  });
+  clearObj(grp);
+  chunk.group = null;
+}
+
+// 経路上、現在位置から aheadM[m] 先の緯度経度（先読みロード用）。道路経路がある時のみ。
+function routeAheadLatLng(aheadM) {
+  if (mode !== "sim" || !routeHasRoad || routeENU.length < 2 || !simOrigin || !camera) return null;
+  const cur = nearestPointOnRoute(camera.position.x, camera.position.z);
+  if (!cur) return null;
+  const p = pointAlongRoute(Math.min(routeTotalM, cur.alongM + aheadM));
+  if (!p) return null;
+  return fromEastNorth(p.x, -p.z, simOrigin.lat, simOrigin.lng);
+}
+
+// 移動時の軽量チェック: 現在位置周辺と経路前方の町並みチャンクを必要なら追加ロード。
+function checkTownChunks() {
+  const eff = effectiveLatLng();
+  if (eff) ensureTownAround(eff);
+  const ahead = routeAheadLatLng(TOWN_PREFETCH_AHEAD_M);
+  if (ahead) ensureTownAround(ahead);
 }
 
 // ガイド矢印をカメラ前方の足元寄りに置き、「次に進む方向」（経路の前方点）へ向ける。
@@ -783,9 +898,12 @@ function updateGuideArrow() {
   guideArrow.lookAt(tx, GUIDE_Y, tz);
 }
 
-// 歩いて移動した時: ガイド矢印を向け直し、HUD/オーバーレイを更新させる
+// 歩いて移動した時: ガイド矢印を向け直し、HUD/オーバーレイを更新させる。
+// 一定間隔で現在位置・経路前方の町並みチャンクの追加ロードも判定する（軽量な距離チェックのみ）。
 function onSimMove() {
   updateGuideArrow();
+  const now = performance.now();
+  if (now - lastTownCheckT > TOWN_CHECK_INTERVAL_MS) { lastTownCheckT = now; checkTownChunks(); }
   if (onUpdateCb) onUpdateCb({});
 }
 
@@ -1240,6 +1358,8 @@ export function stopAR() {
   routeGeom = null; focusTradition = null;
   routeGroup = null; routeENU = []; routeHasRoad = false; routeTotalM = 0;
   lastRouteClickStatusAt = 0;
+  townChunks = []; townLightsAdded = false; townAreasAdded = false;
+  townLastStats = null; lastTownCheckT = 0;
 }
 
 // 検証モードの移動操作API（画面ボタン用）
