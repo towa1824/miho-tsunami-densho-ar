@@ -377,8 +377,8 @@ function addLabels(g, town, origin, groundY) {
     const { east, north } = toEastNorth(lat, lng, origin.lat, origin.lng);
     return [east, -north];
   };
-  const MAXD = 900;                       // この距離(m)より遠い名前は出さない（取得半径いっぱい）
-  const LABEL_MAX = 280;                  // 出すラベル総数の上限（近い順。減らすと遠くから消えて重なりが減る）
+  const MAXD = 150;                       // この距離(m)より遠い名前は出さない（近くだけ＝遠景の混乱を避ける）
+  const LABEL_MAX = 40;                   // 出すラベル総数の上限（近い順＝近くの名前だけに絞る）
   const dist = (x, z) => Math.hypot(x, z);
   const items = [];                       // { d, x, z, y, mk } mkは実際に描く分だけ遅延生成しテクスチャを節約
 
