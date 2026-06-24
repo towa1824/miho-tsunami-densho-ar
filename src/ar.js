@@ -10,7 +10,7 @@ import * as THREE from "three";
 import * as LocAR from "locar";
 import { LookControls } from "./lookcontrols.js";
 import { loadTown, buildTownGroup } from "./town.js";
-import { bearingDeg, distanceM, destPoint, formatDist, toEastNorth, fromEastNorth } from "./geo.js";
+import { bearingDeg, distanceM, destPoint, formatDist, compassLabel, toEastNorth, fromEastNorth } from "./geo.js";
 import {
   traditionsWithin, categoryOf, CATEGORY_COLORS,
   nearestTsunamiFacilities, facilities, intensityLabel,
@@ -25,6 +25,7 @@ let target = null;          // 選択中の避難施設
 let focusTradition = null;  // 学習モードで深掘り中の伝承
 let arrowGroup = null;
 let targetBoard = null;
+let targetObjs = [];        // 避難先の付随オブジェクト（地面マーカー・垂直ライン・方向ガイド）
 let traditionObjs = [];
 let traditionsBuiltAt = null;
 let onUpdateCb = null;
@@ -695,13 +696,117 @@ function wrap(text, n) {
   return out;
 }
 
-// 避難先矢印と説明ボードを現在地に合わせて再配置（現地モード=LocAR投影用）
+// --- 現地ARモードの「遠近・範囲・方向」表現ヘルパー -------------------------
+// 遠方地点をAR内で手前にクランプ表示しても、実距離・実方位・範囲が誤認されないための共通部品。
+// sim/learn にも流用しやすいよう、依存は GROUND_Y / locar / zoom と three だけに限定する。
+
+// 実距離を帯に分類し、ラベル拡大率と「遠方扱い」フラグを返す。
+// 遠いほど大きく見せる（ただし上限を設けて画面を占有しすぎない）。
+function distanceBand(dist) {
+  if (dist <= 80) return { key: "near", scale: 1.0, far: false };
+  if (dist <= 300) return { key: "mid", scale: 1.15, far: false };
+  if (dist <= 800) return { key: "far", scale: 1.3, far: true };
+  return { key: "veryfar", scale: 1.4, far: true };
+}
+
+// AR内の表示距離。近距離(≲45m)はほぼ実距離のまま、遠距離は手前に縮約しつつ
+// 「近い順に少しずつ手前→奥」へ並べ、実際の遠近の前後関係を保つ。
+function displayDistanceForAR(dist, index = 0) {
+  if (dist <= 45) return dist;
+  return 42 + index * 8;
+}
+
+// スプライトのワールドスケールに mult を掛けて基準値として固定し、ズーム時に
+// 見かけが極端に大きくならないよう毎フレーム補正する（zoom が上がるほどワールド
+// スケールを縮め、見かけ倍率の増加を zoom^0.2 程度に抑える）。距離帯の拡大は zoom=1 で活きる。
+function lockLabelScale(sp, mult = 1) {
+  const bx = sp.scale.x * mult, by = sp.scale.y * mult;
+  sp.scale.set(bx, by, 1);
+  sp.onBeforeRender = () => {
+    const k = 1 / Math.pow(Math.max(1, zoom), 0.8);
+    sp.scale.set(bx * k, by * k, 1);
+  };
+}
+
+// 地面に置く範囲マーカー（リング＋半透明ディスク）。「この看板はこの地面位置・
+// この範囲の地点を指す」ことを示す。色で種別（避難先=赤/伝承=橙/記録高=青）を区別。
+function makeGroundMarker(colorHex, radius = 5, { opacity = 0.16 } = {}) {
+  const g = new THREE.Group();
+  const disk = new THREE.Mesh(
+    new THREE.CircleGeometry(radius, 48),
+    new THREE.MeshBasicMaterial({
+      color: colorHex, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }));
+  disk.rotation.x = -Math.PI / 2; disk.renderOrder = 0; g.add(disk);
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(Math.max(0.1, radius - 0.4), radius + 0.4, 48),
+    new THREE.MeshBasicMaterial({
+      color: colorHex, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.renderOrder = 1; g.add(ring);
+  return g;
+}
+
+// 看板と地面の対応位置を結ぶ細い垂直ライン（どの地面位置の看板かを示す）。
+function makeAnchorLine(x, z, y0, y1, colorHex, opacity = 0.75) {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(x, y0, z), new THREE.Vector3(x, y1, z)]);
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+    color: colorHex, transparent: true, opacity }));
+  line.renderOrder = 1;
+  return line;
+}
+
+// 現在地から地点の「実際の方位」へ伸ばす地面ガイド（破線＋矢羽根）。AR表示位置を
+// 手前に縮約していても、この線と矢羽根で本当の方向が分かる。fromLL→toLL は同じ実方位上。
+function makeDirectionGuide(fromLL, toLL, colorHex) {
+  const g = new THREE.Group();
+  const a = locar.lonLatToWorldCoords(fromLL.lng, fromLL.lat);
+  const b = locar.lonLatToWorldCoords(toLL.lng, toLL.lat);
+  const y = GROUND_Y + 0.05;
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(a[0], y, a[1]), new THREE.Vector3(b[0], y, b[1])]);
+  const line = new THREE.Line(geo, new THREE.LineDashedMaterial({
+    color: colorHex, dashSize: 2.4, gapSize: 1.8, transparent: true, opacity: 0.9 }));
+  line.computeLineDistances(); line.renderOrder = 1; g.add(line);
+  const chev = makeChevron(colorHex); chev.scale.setScalar(0.8);
+  chev.position.set(b[0], y + 0.02, b[1]);
+  chev.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); // 現在地→地点の向きへ
+  g.add(chev);
+  return g;
+}
+
+// 方位が近い看板を高さ方向へ段組みして重なりを抑える簡易デコンフリクト。
+// 重なり判定は各看板の角度半幅 halfAng（= worldW と表示距離から算出）の和で行うため、
+// 看板の幅・距離に応じて適応的に効く。entries: [{ y, h, brg, halfAng }] の y を破壊的に
+// 持ち上げる（n が小さい前提の O(n^2)・処理は軽量）。
+function layoutARLabels(entries) {
+  const GAP = 0.8, MARGIN = 1.5; // 段間の余白[m] / 角度の安全余白[deg]
+  const order = entries.map((_, i) => i).sort((a, b) => entries[a].brg - entries[b].brg);
+  const placed = [];
+  for (const idx of order) {
+    const e = entries[idx];
+    for (const p of placed) {
+      let d = Math.abs(p.brg - e.brg); if (d > 180) d = 360 - d;
+      if (d < p.halfAng + e.halfAng + MARGIN) { // 横方向に重なる＝高さ方向へ段組み
+        const top = p.y + p.h / 2 + GAP + e.h / 2;
+        if (top > e.y) e.y = top;
+      }
+    }
+    placed.push(e);
+  }
+}
+
+// 避難先矢印と説明ボードを現在地に合わせて再配置（現地モード=LocAR投影用）。
+// 避難先は最重要: 赤・大きめ・地面リング・垂直ライン・方向ガイドで最優先に見せ、
+// 実距離/方位を明示する（AR内の表示位置は手前にクランプしても誤認させない）。
 function refreshTarget() {
   if (mode === "sim" || mode === "learn") return; // 歩けるモードは build*World で配置
   if (!curPos || !target || !started || target.lat == null) return;
+  const TARGET_C = 0xc62828; // 避難先は赤で最優先に見せる
   const dist = distanceM(curPos.lat, curPos.lng, target.lat, target.lng);
   const brg = bearingDeg(curPos.lat, curPos.lng, target.lat, target.lng);
-  const anchor = destPoint(curPos.lat, curPos.lng, brg, Math.min(dist, 14));
+  const showDist = Math.min(dist, 16);
+  const clamped = showDist < dist - 5;
+  const anchor = destPoint(curPos.lat, curPos.lng, brg, showDist);
 
   if (!arrowGroup) {
     arrowGroup = buildArrow();
@@ -712,20 +817,46 @@ function refreshTarget() {
   const [tx, tz] = locar.lonLatToWorldCoords(target.lng, target.lat);
   arrowGroup.lookAt(tx, -0.3, tz);
 
-  clearObj(targetBoard);
+  // 避難先の付随表示（地面マーカー・垂直ライン・方向ガイド・説明ボード）を作り直す
+  targetObjs.forEach(clearObj);
+  targetObjs = [];
+  const [ax, az] = locar.lonLatToWorldCoords(anchor.lng, anchor.lat);
+
+  // 地面の範囲マーカー（赤・大きめ＝最優先）。どの地面位置が避難先かを示す。
+  const gm = makeGroundMarker(TARGET_C, 7, { opacity: 0.2 });
+  placeAt(gm, anchor.lat, anchor.lng, GROUND_Y + 0.03);
+  scene.add(gm); targetObjs.push(gm);
+  // 遠い時は現在地→実方位の地面ガイド（赤い破線＋矢羽根）で本当の向きを示す
+  if (clamped) {
+    const guide = makeDirectionGuide(curPos, anchor, TARGET_C);
+    scene.add(guide); targetObjs.push(guide);
+  }
+
   const heightLine = target.evacuation_height_m != null
     ? `避難可能高さ ${target.evacuation_height_m}m / ${target.evacuation_place}`
     : `避難可能場所: ${target.evacuation_place}`;
   const whyLines = wrap(target.why, 26);
-  targetBoard = makeTextSprite([
-    { text: `→ ${target.name} まで ${formatDist(dist)}`, bold: true, size: 30 },
-    { text: `種別: ${target.type}（${target.subtype}）`, size: 24, color: "#41505b" },
-    { text: heightLine, size: 24, color: "#41505b" },
+  const lines = [
+    { text: `🎯 避難先 ${target.name}`, bold: true, size: 31, color: "#b71c1c" },
+    { text: `🧭 ${compassLabel(brg)} ・ 実距離 約${formatDist(dist)}`, bold: true, size: 25, color: "#b71c1c" },
+  ];
+  if (clamped) lines.push(
+    { text: `AR内は手前(約${Math.round(showDist)}m先)に表示。赤い線の向きが実際の方向です。`, size: 18, color: "#8a6d3b" });
+  lines.push(
+    { text: `種別: ${target.type}（${target.subtype}）`, size: 23, color: "#41505b" },
+    { text: heightLine, size: 23, color: "#41505b" },
     { text: `理由: ${whyLines[0] ?? ""}`, size: 22, color: "#0d47a1" },
-    ...whyLines.slice(1, 3).map((t) => ({ text: `　${t}`, size: 22, color: "#0d47a1" })),
-  ], { accent: CATEGORY_COLORS[categoryOf(target)] });
-  targetBoard.position.set(arrowGroup.position.x, 2.1, arrowGroup.position.z);
-  scene.add(targetBoard);
+    ...whyLines.slice(1, 3).map((t) => ({ text: `　${t}`, size: 22, color: "#0d47a1" })));
+  targetBoard = makeTextSprite(lines, { accent: TARGET_C, width: 540 });
+  const bh = (targetBoard.userData.worldH || 5) * 1.5;
+  placeAt(targetBoard, anchor.lat, anchor.lng, 1.9 + bh / 2);
+  targetBoard.renderOrder = 10;       // 伝承ボード(5)より前面＝最優先
+  lockLabelScale(targetBoard, 1.5);   // 伝承より大きく・ズーム時も破綻しない
+  scene.add(targetBoard); targetObjs.push(targetBoard);
+
+  // 看板と地面を結ぶ垂直ライン（赤）
+  const line = makeAnchorLine(ax, az, GROUND_Y + 0.03, 1.9, TARGET_C);
+  scene.add(line); targetObjs.push(line);
 
   if (onUpdateCb) onUpdateCb({ dist, brg });
 }
@@ -742,35 +873,72 @@ function refreshTraditions() {
   traditionObjs.forEach(clearObj);
   traditionObjs = [];
 
+  const TRAD = 0xef6c00, GAUGE = 0x1565c0; // 伝承=橙 / 記録高ゲージ=青
   const list = traditionsWithin(curPos, 1500).slice(0, 5);
-  list.forEach((t, i) => {
+
+  // 1) 各地点の方位・表示距離・看板を準備（高さは後段のデコンフリクトで確定）
+  const items = list.map((t, i) => {
     const brg = bearingDeg(curPos.lat, curPos.lng, t.lat, t.lng);
-    const showDist = Math.min(t._dist, 38 + i * 7); // 実際は遠くても38m+α先に見せる
-    const p = destPoint(curPos.lat, curPos.lng, brg, showDist);
-
-    const board = makeTextSprite([
-      { text: `📜 ${t.title}`, bold: true, size: 26, color: "#7a3b00" },
-      { text: `この方向 約${formatDist(t._dist)}｜${t.disaster}`, size: 22, color: "#41505b" },
-      { text: t.evacuation_message, size: 21, color: "#5d3200" },
-      { text: "※伝承は補助情報。避難判断は公式情報で。", size: 19, color: "#8a6d3b" },
-    ], { accent: CATEGORY_COLORS.tradition, width: 520 });
-    const bh = board.userData.worldH || 5;
-    // 下端を一定高さにそろえ（中心=下端+高さ/2）、複数ボードは少し高さをずらして重なりを抑える
-    placeAt(board, p.lat, p.lng, 2.0 + (i % 2) * 0.8 + bh / 2);
-    scene.add(board);
-    traditionObjs.push(board);
-
-    if (t.recorded_height_m != null) {
-      const gaugeDist = Math.min(t._dist, 26);
-      const gp = destPoint(curPos.lat, curPos.lng, brg, gaugeDist);
-      const gauge = buildHeightGauge(
-        t.recorded_height_m,
-        `${t.disaster.includes("安政") ? "安政の津波" : "記録津波"} 記録高 約${t.recorded_height_m}m（史料による）`);
-      placeAt(gauge, gp.lat, gp.lng, 0);
-      scene.add(gauge);
-      traditionObjs.push(gauge);
-    }
+    const showDist = displayDistanceForAR(t._dist, i); // 遠い地点は手前に縮約
+    const clamped = showDist < t._dist - 5;
+    const band = distanceBand(t._dist);
+    const anchor = destPoint(curPos.lat, curPos.lng, brg, showDist);
+    const lines = [
+      { text: `${band.far ? "🔭 遠方 " : "📜 "}${t.title}`, bold: true, size: 26, color: "#7a3b00" },
+      { text: `🧭 ${compassLabel(brg)} ・ 実距離 約${formatDist(t._dist)}`, bold: true, size: 22, color: "#b5460b" },
+    ];
+    if (clamped) lines.push(
+      { text: `AR内は手前(約${Math.round(showDist)}m先)に縮約表示`, size: 18, color: "#8a6d3b" });
+    lines.push(
+      { text: t.disaster, size: 21, color: "#41505b" },
+      { text: t.evacuation_message, size: 20, color: "#5d3200" },
+      { text: "※伝承は補助情報。避難判断は公式情報で。", size: 18, color: "#8a6d3b" });
+    const board = makeTextSprite(lines, { accent: CATEGORY_COLORS.tradition, width: 520 });
+    board.renderOrder = 5; // 避難先ボード(10)より背面
+    const bh = (board.userData.worldH || 5) * band.scale;
+    const bw = (board.userData.worldW || 7) * band.scale;
+    // 表示距離における看板の角度半幅[deg]（worldW を活用した重なり判定用）
+    const halfAng = (Math.atan2(bw / 2, showDist) * 180) / Math.PI;
+    return { t, brg, showDist, clamped, band, anchor, board, bh, halfAng, y: 2.0 + bh / 2 };
   });
+
+  // 2) 方位が近い看板は高さ方向に段組みして重なりを抑える（worldW から角度半幅を算出）
+  const lay = items.map((it) => ({ y: it.y, h: it.bh, brg: it.brg, halfAng: it.halfAng }));
+  layoutARLabels(lay);
+  items.forEach((it, k) => { it.y = lay[k].y; });
+
+  // 3) 配置: 地面マーカー → 看板 → 垂直ライン →（遠方は）方向ガイド → 記録高ゲージ
+  for (const it of items) {
+    const [ax, az] = locar.lonLatToWorldCoords(it.anchor.lng, it.anchor.lat);
+
+    const gm = makeGroundMarker(TRAD, 4.5);
+    placeAt(gm, it.anchor.lat, it.anchor.lng, GROUND_Y + 0.03);
+    scene.add(gm); traditionObjs.push(gm);
+
+    placeAt(it.board, it.anchor.lat, it.anchor.lng, it.y);
+    lockLabelScale(it.board, it.band.scale); // 距離帯で拡大＋ズーム時も破綻しない
+    scene.add(it.board); traditionObjs.push(it.board);
+
+    const line = makeAnchorLine(ax, az, GROUND_Y + 0.03, it.y - it.bh / 2, TRAD);
+    scene.add(line); traditionObjs.push(line);
+
+    if (it.clamped) { // 遠方は現在地→実方位の地面ガイドで本当の向きを示す
+      const guide = makeDirectionGuide(curPos, it.anchor, TRAD);
+      scene.add(guide); traditionObjs.push(guide);
+    }
+
+    if (it.t.recorded_height_m != null) {
+      // 記録高ゲージは看板と同じ地点へ寄せ、横に少しずらして垂直ライン・柱と干渉させない
+      const gauge = buildHeightGauge(it.t.recorded_height_m,
+        `${it.t.disaster.includes("安政") ? "安政の津波" : "記録津波"} 記録高 約${it.t.recorded_height_m}m（史料による）`);
+      placeAt(gauge, it.anchor.lat, it.anchor.lng, 0);
+      gauge.position.x += 3.2;
+      scene.add(gauge); traditionObjs.push(gauge);
+      const gring = makeGroundMarker(GAUGE, 1.6, { opacity: 0.22 }); // ゲージ脚元の青い範囲
+      gring.position.set(ax + 3.2, GROUND_Y + 0.04, az);
+      scene.add(gring); traditionObjs.push(gring);
+    }
+  }
 }
 
 export function setTarget(facility) {
@@ -957,7 +1125,7 @@ export function stopAR() {
   }
   zoom = 1;
   controls = null; lookControls = null; envGroup = null;
-  arrowGroup = null; targetBoard = null;
+  arrowGroup = null; targetBoard = null; targetObjs = [];
   traditionObjs = []; traditionsBuiltAt = null; curPos = null;
   simWorld = null; guideArrow = null; simOrigin = null; simBuilt = false;
   routeGeom = null; focusTradition = null;
