@@ -1,6 +1,6 @@
 // 町並み3D（OpenStreetMap / Overpass API・無料/APIキー不要）
 // 現地目線ビューに実際の町並み（建物・道路・水域・緑地・砂浜・海岸線）を立体で重ねる。
-// - 建物・道路・公園の名前（OSM name）をラベルとして3D空間に表示する（addLabels）
+// - 建物・道路・公園の名前に加え、店舗・施設などの名前付きPOI(OSMノード)もラベル表示する（addLabels）
 // - 表示中は「© OpenStreetMap contributors」を明示する（ODbL。#arAttrib / 注意事項タブ）
 // - 建物高さは height → building:levels×3m → 種別既定値 の順で推定（=概形。実物と異なりうる）
 // - 取得結果は localStorage に7日キャッシュし、同一地点での再リクエストを避ける
@@ -12,11 +12,11 @@ const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter", // 本家が混雑時のミラー
 ];
-const CACHE_PREFIX = "town.v2:"; // v2: 地物名(name)を保持するよう構造変更
+const CACHE_PREFIX = "town.v4:"; // v4: POI取得タグ拡張・ラベル上限緩和（出せるだけ表示）
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 
 // 取得半径[m]。目線の見通し＋目的地周辺をカバーしつつデータ量を抑える
-const R_BUILDING = 650, R_ROAD = 800, R_AREA = 900, R_COAST = 1600;
+const R_BUILDING = 650, R_ROAD = 800, R_AREA = 900, R_COAST = 1600, R_POI = 900;
 
 const FOOT = new Set(["footway", "path", "pedestrian", "cycleway", "steps", "track"]);
 const ROAD_W = {
@@ -30,6 +30,17 @@ function buildQuery({ lat, lng }) {
   return `[out:json][timeout:25];(
 way["building"]${at(R_BUILDING)};
 way["highway"]${at(R_ROAD)};
+node["name"]["amenity"]${at(R_POI)};
+node["name"]["shop"]${at(R_POI)};
+node["name"]["office"]${at(R_POI)};
+node["name"]["tourism"]${at(R_POI)};
+node["name"]["leisure"]${at(R_POI)};
+node["name"]["healthcare"]${at(R_POI)};
+node["name"]["craft"]${at(R_POI)};
+node["name"]["historic"]${at(R_POI)};
+node["name"]["man_made"]${at(R_POI)};
+node["name"]["railway"]${at(R_POI)};
+node["name"]["public_transport"]${at(R_POI)};
 way["natural"="water"]${at(R_AREA)};
 way["natural"~"^(wood|beach|sand)$"]${at(R_AREA)};
 way["landuse"~"^(forest|grass|meadow|recreation_ground|village_green)$"]${at(R_AREA)};
@@ -62,12 +73,38 @@ function colorClass(tags) {
 
 const r6 = (v) => Math.round(v * 1e6) / 1e6;
 
+// 名前付きPOIノードのアイコン（種別ごと。店舗・施設名を見分けやすくする）
+function poiIcon(tags) {
+  const a = tags.amenity;
+  if (tags.healthcare || ["hospital", "clinic", "pharmacy", "dentist", "doctors"].includes(a)) return "🏥";
+  if (["school", "kindergarten", "university", "college"].includes(a)) return "🏫";
+  if (["restaurant", "cafe", "fast_food", "food_court", "bar", "pub"].includes(a)) return "🍴";
+  if (a === "post_office") return "📮";
+  if (["bank", "atm"].includes(a)) return "🏦";
+  if (a === "fuel") return "⛽";
+  if (a === "place_of_worship") return "⛩️";
+  if (tags.railway || tags.public_transport) return "🚉";
+  if (tags.historic) return "🏛️";
+  if (tags.man_made) return "🗼";
+  if (tags.tourism) return "📸";
+  if (tags.shop) return "🏪";
+  if (tags.office) return "🏢";
+  if (tags.leisure) return "🏞️";
+  return "📍";
+}
+
 // Overpass応答 → 描画に必要な最小構造（キャッシュもこの形）
 function parseOsm(json) {
-  const town = { buildings: [], roads: [], water: [], green: [], sand: [], coast: [] };
+  const town = { buildings: [], roads: [], water: [], green: [], sand: [], coast: [], pois: [] };
   for (const el of json.elements ?? []) {
-    if (el.type !== "way" || !Array.isArray(el.geometry) || el.geometry.length < 2) continue;
     const tags = el.tags ?? {};
+    // 名前付きPOI（店舗・施設などのOSMノード）。建物polygonにnameが無い店も名前を拾える。
+    if (el.type === "node") {
+      const nm = tags["name:ja"] || tags.name;
+      if (nm && el.lat != null) town.pois.push({ name: nm, lat: r6(el.lat), lng: r6(el.lon), icon: poiIcon(tags) });
+      continue;
+    }
+    if (el.type !== "way" || !Array.isArray(el.geometry) || el.geometry.length < 2) continue;
     const pts = el.geometry.map((p) => [r6(p.lat), r6(p.lon)]);
     const name = tags["name:ja"] || tags.name || null; // 地物名（日本語名を優先）
     if (tags.building) {
@@ -167,7 +204,7 @@ export function buildTownGroup(town, origin, groundY) {
   // 海岸線: OSMの規約で「進行方向の右側が水域」→ 右側へ帯を張り海の手がかりに
   addFlat(g, FLAT.coast, coastGeo(town.coast, enu), groundY);
 
-  // 建物・道路・公園の名前ラベル（OSM name。© OpenStreetMap contributors）
+  // 名前ラベル（建物・道路・公園 ＋ 店舗・施設POI。OSM name。© OpenStreetMap contributors）
   addLabels(g, town, origin, groundY);
   return g;
 }
@@ -284,6 +321,9 @@ function bufferGeo(pos) {
 
 // ---------------- 名前ラベル ----------------
 
+// onBeforeRenderでのラベル拡縮に使う作業用ベクトル（毎フレーム再利用）
+const _wp = new THREE.Vector3();
+
 // 常にカメラを向く文字ラベル（地物名表示用）。避難施設ラベルとは別スタイルで控えめに。
 function makeLabel(text, { color = "#fff", bg = "rgba(40,50,60,.82)", fontPx = 30 } = {}) {
   const pad = 10;
@@ -303,7 +343,18 @@ function makeLabel(text, { color = "#fff", bg = "rgba(40,50,60,.82)", fontPx = 3
   tex.anisotropy = 4;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
   sp.renderOrder = 3;
-  sp.scale.set(w * 0.022, h * 0.022, 1); // 1px ≒ 2.2cm（遠くでも読める大きさ）
+  sp.scale.set(w * 0.022, h * 0.022, 1); // 近距離の基準サイズ（1px ≒ 2.2cm）
+  // 遠くの文字が小さく読めない対策：遠いラベルほど、カメラ距離に応じて拡大し画面上ほぼ一定の
+  // 高さに見せる（近距離は基準サイズのまま＝下限クランプ。歩行・ズームに毎フレーム追従）。
+  const aspect = w / h, baseH = h * 0.022;
+  const TARGET = 0.05, MAXH = 6;   // 目安(約5%) / 遠景サイズ上限[m]＝小さいほど遠くは小さくなり重なりにくい
+  sp.onBeforeRender = (renderer, scene, camera) => {
+    _wp.setFromMatrixPosition(sp.matrixWorld);
+    const D = camera.position.distanceTo(_wp);
+    const tan = Math.tan(THREE.MathUtils.degToRad((camera.fov ?? 60) / 2));
+    const hW = Math.min(MAXH, Math.max(baseH, TARGET * 2 * D * tan));
+    sp.scale.set(aspect * hW, hW, 1);
+  };
   return sp;
 }
 
@@ -319,15 +370,17 @@ function dedupeByName(arr) {
   return out;
 }
 
-// 建物名・道路名・公園名を3D空間に配置（近い順・カテゴリ別に上限を設けて煩雑にしない）
+// 名前ラベルを3D空間に配置（建物名・店舗/施設POI・道路名・公園名）。
+// 「出せるだけ」近い順に出す＝各カテゴリの個別上限は撤廃し、総数だけ LABEL_MAX で安全に頭打ちする。
 function addLabels(g, town, origin, groundY) {
   const enu = (lat, lng) => {
     const { east, north } = toEastNorth(lat, lng, origin.lat, origin.lng);
     return [east, -north];
   };
-  const MAXD = 500;                       // この距離(m)より遠い名前は出さない
+  const MAXD = 150;                       // この距離(m)より遠い名前は出さない（近くだけ＝遠景の混乱を避ける）
+  const LABEL_MAX = 40;                   // 出すラベル総数の上限（近い順＝近くの名前だけに絞る）
   const dist = (x, z) => Math.hypot(x, z);
-  const place = (sp, x, z, y) => { sp.position.set(x, y, z); g.add(sp); };
+  const items = [];                       // { d, x, z, y, mk } mkは実際に描く分だけ遅延生成しテクスチャを節約
 
   // 公園・緑地名
   const parks = [];
@@ -337,8 +390,9 @@ function addLabels(g, town, origin, groundY) {
     if (dist(x, z) > MAXD) continue;
     parks.push({ name: gr.name, x, z, d: dist(x, z) });
   }
-  dedupeByName(parks.sort((a, b) => a.d - b.d)).slice(0, 8).forEach((p) =>
-    place(makeLabel("🌳 " + p.name, { bg: "rgba(34,90,40,.82)" }), p.x, p.z, groundY + 2.2));
+  for (const p of dedupeByName(parks.sort((a, b) => a.d - b.d)))
+    items.push({ d: p.d, x: p.x, z: p.z, y: groundY + 2.2,
+      mk: () => makeLabel("🌳 " + p.name, { bg: "rgba(34,90,40,.82)" }) });
 
   // 建物名（名前付きのみ・屋根の上）
   const blds = [];
@@ -348,8 +402,20 @@ function addLabels(g, town, origin, groundY) {
     if (dist(x, z) > MAXD) continue;
     blds.push({ name: b.name, x, z, y: groundY + b.h + 1.4, d: dist(x, z) });
   }
-  dedupeByName(blds.sort((a, b) => a.d - b.d)).slice(0, 16).forEach((b) =>
-    place(makeLabel(b.name, { bg: "rgba(20,40,70,.82)" }), b.x, b.z, b.y));
+  for (const b of dedupeByName(blds.sort((a, b) => a.d - b.d)))
+    items.push({ d: b.d, x: b.x, z: b.z, y: b.y,
+      mk: () => makeLabel(b.name, { bg: "rgba(20,40,70,.82)" }) });
+
+  // 店舗・施設などの名前付きPOI（OSMノード）。建物名だけでは出ない店名・施設名＝主な増分。
+  const pois = [];
+  for (const p of town.pois ?? []) {
+    const [x, z] = enu(p.lat, p.lng);
+    if (dist(x, z) > MAXD) continue;
+    pois.push({ name: `${p.icon} ${p.name}`, x, z, d: dist(x, z) });
+  }
+  for (const p of dedupeByName(pois.sort((a, b) => a.d - b.d)))
+    items.push({ d: p.d, x: p.x, z: p.z, y: groundY + 3,
+      mk: () => makeLabel(p.name, { bg: "rgba(45,55,70,.82)", fontPx: 26 }) });
 
   // 道路名（同名は原点に最も近い中点1つに集約・低い位置に）
   const byRoad = new Map();
@@ -361,6 +427,15 @@ function addLabels(g, town, origin, groundY) {
     const cur = byRoad.get(r.name), d = dist(x, z);
     if (!cur || d < cur.d) byRoad.set(r.name, { name: r.name, x, z, d });
   }
-  [...byRoad.values()].sort((a, b) => a.d - b.d).slice(0, 12).forEach((r) =>
-    place(makeLabel(r.name, { bg: "rgba(60,60,68,.78)", fontPx: 25 }), r.x, r.z, groundY + 0.8));
+  for (const r of byRoad.values())
+    items.push({ d: r.d, x: r.x, z: r.z, y: groundY + 0.8,
+      mk: () => makeLabel(r.name, { bg: "rgba(60,60,68,.78)", fontPx: 25 }) });
+
+  // 近い順に総数 LABEL_MAX まで描画（描く分だけテクスチャを生成）
+  items.sort((a, b) => a.d - b.d);
+  for (const it of items.slice(0, LABEL_MAX)) {
+    const sp = it.mk();
+    sp.position.set(it.x, it.y, it.z);
+    g.add(sp);
+  }
 }
