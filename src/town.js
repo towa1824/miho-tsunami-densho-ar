@@ -347,7 +347,7 @@ function makeLabel(text, { color = "#fff", bg = "rgba(40,50,60,.82)", fontPx = 3
   // 遠くの文字が小さく読めない対策：遠いラベルほど、カメラ距離に応じて拡大し画面上ほぼ一定の
   // 高さに見せる（近距離は基準サイズのまま＝下限クランプ。歩行・ズームに毎フレーム追従）。
   const aspect = w / h, baseH = h * 0.022;
-  const TARGET = 0.055, MAXH = 80; // 画面高に対するラベル高の目安(約5.5%) / ワールド上限[m]
+  const TARGET = 0.05, MAXH = 6;   // 目安(約5%) / 遠景サイズ上限[m]＝小さいほど遠くは小さくなり重なりにくい
   sp.onBeforeRender = (renderer, scene, camera) => {
     _wp.setFromMatrixPosition(sp.matrixWorld);
     const D = camera.position.distanceTo(_wp);
@@ -378,7 +378,7 @@ function addLabels(g, town, origin, groundY) {
     return [east, -north];
   };
   const MAXD = 900;                       // この距離(m)より遠い名前は出さない（取得半径いっぱい）
-  const LABEL_MAX = 400;                  // 一度に出すラベル総数の安全上限（多すぎでフリーズしないよう近い順に確保）
+  const LABEL_MAX = 280;                  // 出すラベル総数の上限（近い順。減らすと遠くから消えて重なりが減る）
   const dist = (x, z) => Math.hypot(x, z);
   const items = [];                       // { d, x, z, y, mk } mkは実際に描く分だけ遅延生成しテクスチャを節約
 
