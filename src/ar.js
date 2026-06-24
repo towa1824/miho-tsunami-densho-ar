@@ -530,6 +530,112 @@ function pathLength(pts) {
   return len;
 }
 
+// --- 道路経路クリックで道なりに進む（sim・現地目線ビュー）---------------------------
+// 青い道路経路をクリック/タップした地点に最も近い routeENU 上の点を求め、そこから道なりに
+// 少し先（ROAD_LOOK_AHEAD_M）の点へ進む。LookControls からは「クリック移動先を外部で解決する」
+// コールバック resolveClickMoveTarget として呼ばれ、道クリックでなければ null を返して既存の
+// 地面クリック移動にフォールバックさせる（責務分離: LookControls は経路を知らない）。
+// 移動自体は LookControls の直線前進だが、1クリックの前進量を ROAD_MAX_STEP_M で抑え、
+// タップを重ねて道なりに進む形にすることで道を大きくショートカットしないようにする。
+const ROAD_LOOK_AHEAD_M = 12; // クリック地点からさらに進む距離（「少し先へ進む」感覚）
+const ROAD_MAX_STEP_M = 24;   // 1クリックの前進上限（道を大きく外れない・タップで継ぎ足す）
+// クリック許容距離: 見た目(全幅約1.4m)より広めにして押しやすく。スマホ(coarse pointer)はさらに広く。
+const ROAD_CLICK_TOL_M =
+  (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches) ? 9 : 6;
+
+// (x,z) に最も近い routeENU 上の点。{ x, z, segI, t, distToRoute, alongM } を返す。
+// alongM = 経路始点からその点までの累積距離[m]。
+function nearestPointOnRoute(x, z) {
+  if (!routeENU || routeENU.length < 2) return null;
+  let best = null, acc = 0;
+  for (let i = 1; i < routeENU.length; i++) {
+    const a = routeENU[i - 1], b = routeENU[i];
+    const dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz || 1e-9;
+    let t = ((x - a.x) * dx + (z - a.z) * dz) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + dx * t, cz = a.z + dz * t;
+    const d = Math.hypot(x - cx, z - cz), segLen = Math.sqrt(len2);
+    if (!best || d < best.distToRoute) {
+      best = { x: cx, z: cz, segI: i, t, distToRoute: d, alongM: acc + segLen * t };
+    }
+    acc += segLen;
+  }
+  return best;
+}
+
+// 経路始点からの累積距離 alongM[m] に対応する経路上の点 {x,z}。終端は超えない。
+function pointAlongRoute(alongM) {
+  if (!routeENU || routeENU.length < 2) return null;
+  if (alongM <= 0) return { x: routeENU[0].x, z: routeENU[0].z };
+  let acc = 0;
+  for (let i = 1; i < routeENU.length; i++) {
+    const a = routeENU[i - 1], b = routeENU[i];
+    const seg = Math.hypot(b.x - a.x, b.z - a.z);
+    if (acc + seg >= alongM) {
+      const t = (alongM - acc) / (seg || 1e-9);
+      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+    }
+    acc += seg;
+  }
+  const last = routeENU[routeENU.length - 1];
+  return { x: last.x, z: last.z };
+}
+
+// LookControls.resolveClickMoveTarget コールバック本体。
+// 地面ヒット hit が青い道路経路の近く(ROAD_CLICK_TOL_M 以内)なら routeENU 上の前方点 {x,z}
+// を返し、そうでなければ null（=既存の地面クリック移動にフォールバック）。
+let lastRouteClickStatusAt = 0;
+function resolveRouteClickMove({ hit }) {
+  if (mode !== "sim" || !routeHasRoad || !routeENU || routeENU.length < 2 || !hit) return null;
+  const near = nearestPointOnRoute(hit.x, hit.z);
+  if (!near || near.distToRoute > ROAD_CLICK_TOL_M) return null; // 道から離れている＝道クリックでない
+
+  // クリック地点から少し先へ。ただし1クリックの前進は上限で抑え、経路終端は超えない。
+  // 後方クリックでの後戻りも許容するが、先読み分だけ前進を優先する。
+  const cur = nearestPointOnRoute(camera.position.x, camera.position.z);
+  const curAlong = cur ? cur.alongM : 0;
+  let along = near.alongM + ROAD_LOOK_AHEAD_M;
+  along = Math.min(along, curAlong + ROAD_MAX_STEP_M); // 一度に進みすぎない
+  along = Math.min(along, routeTotalM);                // 終端を超えない
+  const dest = pointAlongRoute(Math.max(0, along)) || near;
+
+  showRouteClickMarker(near.x, near.z); // クリック地点（道路上）に一瞬マーカー
+  const now = performance.now();
+  if (now - lastRouteClickStatusAt > 4000) { // トーストを連打しない
+    status("道に沿って進みます", "info");
+    lastRouteClickStatusAt = now;
+  }
+  return { x: dest.x, z: dest.z };
+}
+
+// クリックした道路上の点に一瞬だけ出す小さなリングマーカー（操作のフィードバック）。
+// 画面がうるさくならないよう常に1個だけ・約0.75秒で自動消去する。
+let clickMarker = null, clickMarkerTimer = null;
+function showRouteClickMarker(x, z) {
+  if (!simWorld) return;
+  removeClickMarker();
+  const m = new THREE.Mesh(
+    new THREE.RingGeometry(0.55, 1.05, 28),
+    new THREE.MeshBasicMaterial({
+      color: 0x1a73e8, transparent: true, opacity: 0.95,
+      side: THREE.DoubleSide, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(x, GROUND_Y + 0.08, z);
+  m.renderOrder = 3; // 道筋ストリップ(1-2)より前面
+  simWorld.add(m);
+  clickMarker = m;
+  clickMarkerTimer = setTimeout(removeClickMarker, 750);
+}
+function removeClickMarker() {
+  if (clickMarkerTimer) { clearTimeout(clickMarkerTimer); clickMarkerTimer = null; }
+  if (clickMarker) {
+    clickMarker.geometry?.dispose?.();
+    clickMarker.material?.dispose?.();
+    clearObj(clickMarker);
+    clickMarker = null;
+  }
+}
+
 // 進行方向を示すシェブロン（矢羽根）。小さめ＆半透明にして、
 // 道筋の上に重なっても煩雑にならず「進む向き」だけが読み取れるようにする。
 function makeChevron(color) {
@@ -1028,6 +1134,8 @@ export async function startAR(holder,
     // 歩ける3D空間＋ストリートビュー風操作。カメラ・方位センサーは使わない。
     lookControls = new LookControls(camera, renderer.domElement, { groundY: GROUND_Y });
     lookControls.onMove = onSimMove;
+    // 道路経路クリックで道なりに進む解決を委譲（sim時のみ動作。learn/直線参考時は null を返す）
+    lookControls.resolveClickMoveTarget = resolveRouteClickMove;
     simBuilt = false;
     status(mode === "learn"
       ? "伝承学習ビュー: ドラッグで見回し、行きたい場所をタップで移動。橙の柱が伝承スポット、青いゲージが「ここまで水が来た」記録です。下の解説をスクロールで読めます。"
@@ -1110,6 +1218,7 @@ export async function startAR(holder,
 export function stopAR() {
   if (!started) return;
   started = false;
+  removeClickMarker();
   try { locar.stopGps?.(); } catch { /* fakeGps時など */ }
   try { controls?.disconnect?.(); } catch { /* 未接続時 */ }
   try { lookControls?.dispose?.(); } catch { /* noop */ }
@@ -1130,6 +1239,7 @@ export function stopAR() {
   simWorld = null; guideArrow = null; simOrigin = null; simBuilt = false;
   routeGeom = null; focusTradition = null;
   routeGroup = null; routeENU = []; routeHasRoad = false; routeTotalM = 0;
+  lastRouteClickStatusAt = 0;
 }
 
 // 検証モードの移動操作API（画面ボタン用）
