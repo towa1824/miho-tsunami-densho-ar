@@ -775,16 +775,18 @@ function makeDirectionGuide(fromLL, toLL, colorHex) {
 }
 
 // 方位が近い看板を高さ方向へ段組みして重なりを抑える簡易デコンフリクト。
-// entries: [{ y, h, brg }] の y を破壊的に持ち上げる（n が小さい前提の O(n^2)）。
+// 重なり判定は各看板の角度半幅 halfAng（= worldW と表示距離から算出）の和で行うため、
+// 看板の幅・距離に応じて適応的に効く。entries: [{ y, h, brg, halfAng }] の y を破壊的に
+// 持ち上げる（n が小さい前提の O(n^2)・処理は軽量）。
 function layoutARLabels(entries) {
-  const SEP_DEG = 14, GAP = 0.8;
+  const GAP = 0.8, MARGIN = 1.5; // 段間の余白[m] / 角度の安全余白[deg]
   const order = entries.map((_, i) => i).sort((a, b) => entries[a].brg - entries[b].brg);
   const placed = [];
   for (const idx of order) {
     const e = entries[idx];
     for (const p of placed) {
       let d = Math.abs(p.brg - e.brg); if (d > 180) d = 360 - d;
-      if (d < SEP_DEG) {
+      if (d < p.halfAng + e.halfAng + MARGIN) { // 横方向に重なる＝高さ方向へ段組み
         const top = p.y + p.h / 2 + GAP + e.h / 2;
         if (top > e.y) e.y = top;
       }
@@ -894,11 +896,14 @@ function refreshTraditions() {
     const board = makeTextSprite(lines, { accent: CATEGORY_COLORS.tradition, width: 520 });
     board.renderOrder = 5; // 避難先ボード(10)より背面
     const bh = (board.userData.worldH || 5) * band.scale;
-    return { t, brg, showDist, clamped, band, anchor, board, bh, y: 2.0 + bh / 2 };
+    const bw = (board.userData.worldW || 7) * band.scale;
+    // 表示距離における看板の角度半幅[deg]（worldW を活用した重なり判定用）
+    const halfAng = (Math.atan2(bw / 2, showDist) * 180) / Math.PI;
+    return { t, brg, showDist, clamped, band, anchor, board, bh, halfAng, y: 2.0 + bh / 2 };
   });
 
-  // 2) 方位が近い看板は高さ方向に段組みして重なりを抑える
-  const lay = items.map((it) => ({ y: it.y, h: it.bh, brg: it.brg }));
+  // 2) 方位が近い看板は高さ方向に段組みして重なりを抑える（worldW から角度半幅を算出）
+  const lay = items.map((it) => ({ y: it.y, h: it.bh, brg: it.brg, halfAng: it.halfAng }));
   layoutARLabels(lay);
   items.forEach((it, k) => { it.y = lay[k].y; });
 
