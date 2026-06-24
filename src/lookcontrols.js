@@ -22,6 +22,11 @@ export class LookControls {
     this._touchMove = { f: 0, s: 0 }; // 画面D-pad用 forward/strafe (-1..1)
     this._lastT = performance.now();
     this.onMove = null;       // 移動時コールバック(camera.position更新後)
+    // クリック移動先を外部で解決するコールバック。
+    // ({ clientX, clientY, hit, camera, groundY }) を受け取り {x,z} を返すと
+    // それを移動目標に使う。null/undefined なら既定の地面クリック移動にフォールバック。
+    // (ar.js が道路経路 routeENU に沿う移動先を返すために使う)
+    this.resolveClickMoveTarget = null;
 
     // ドラッグ/クリック判定・慣性・クリック移動
     this._dragging = false;
@@ -105,6 +110,17 @@ export class LookControls {
     if (dir.y >= -0.02) return; // 空（地平線より上）をクリック → 移動しない
     const t = (this.groundY - this.camera.position.y) / dir.y;
     const hit = this.camera.position.clone().add(dir.multiplyScalar(t));
+
+    // 道クリック等の特殊な移動先を外部で解決（ar.js が routeENU 上の点を返す）。
+    // {x,z} が返ればそれを目標に、null/undefined なら下の地面クリック移動を使う。
+    const resolved = this.resolveClickMoveTarget?.({
+      clientX, clientY, hit, camera: this.camera, groundY: this.groundY,
+    });
+    if (resolved && Number.isFinite(resolved.x) && Number.isFinite(resolved.z)) {
+      this._moveTarget = { x: resolved.x, z: resolved.z };
+      return;
+    }
+
     const dx = hit.x - this.camera.position.x;
     const dz = hit.z - this.camera.position.z;
     const d = Math.hypot(dx, dz);
