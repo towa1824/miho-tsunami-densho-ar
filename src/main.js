@@ -1,12 +1,13 @@
 // アプリ全体の制御: タブ切替・現在地(GPS/デモ)・地図・AR起動
 import "./style.css";
-import { demoLocations, facilityById, traditionById, nearestTradition, nearestTsunamiFacilities } from "./data.js";
+import { demoLocations, facilityById, traditionById, nearestTradition, traditionsWithin, nearestTsunamiFacilities } from "./data.js";
 import * as MapView from "./map.js";
 import * as AR from "./ar.js";
+import * as SV from "./streetview.js";
 import { initMiniMap, drawMiniMap } from "./minimap.js";
 import {
   renderFacilitiesTab, renderTraditionsTab, renderArTab, renderAboutTab,
-  arOverlayHtml, learnOverlayHtml,
+  arOverlayHtml, learnOverlayHtml, streetviewOverlayHtml,
 } from "./ui.js";
 import { distanceM, bearingDeg, destPoint, compassLabel, travelTimeMin, formatDuration, formatDist, TRAVEL_LABEL } from "./geo.js";
 
@@ -25,7 +26,11 @@ const state = {
   routeGeometry: null,  // OSRMの経路形状（現地目線ビューの道筋描画に渡す）
   arRoute: null,        // AR起動時に確保した道路経路 { mode, geometry, distM, durS }
   learnTradition: null, // 伝承学習ビューで深掘り中の伝承
+  // "streetview": Googleストリートビューで表示中の避難施設（sim/live とは独立した追加ビュー）。
+  // 既存の arMode("sim"/"live") は一切変えない。
+  streetviewFacility: null,
 };
+let svExpanded = false; // ストリートビューの下部カードの展開状態
 let arStatusMsg = "";
 let navExpanded = false; // ナビカードの展開状態（折りたたみ）
 let headingTimer = null;
@@ -59,6 +64,11 @@ const el = {
   arWalkResetBtn: document.getElementById("arWalkResetBtn"),
   arDpad: document.getElementById("arDpad"),
   arMiniMap: document.getElementById("arMiniMap"),
+  streetView: document.getElementById("streetView"),
+  svPano: document.getElementById("svPano"),
+  svOverlay: document.getElementById("svOverlay"),
+  svMessage: document.getElementById("svMessage"),
+  svExit: document.getElementById("svExit"),
 };
 
 const handlers = {
@@ -68,6 +78,7 @@ const handlers = {
   onStartAR: (f) => startAR(f),
   onSetArMode: (m) => { state.arMode = m; if (state.tab === "ar") renderActiveTab(); },
   onLearnTradition: (id) => startLearnAR(traditionById(id)),
+  onStreetView: (id) => openStreetView(facilityById(id)),
 };
 
 // ---- 現在地 ----
@@ -491,6 +502,108 @@ function exitAR() {
   MapView.invalidate();
 }
 
+// ---- Googleストリートビュー（追加ビュー）----
+// 既存の sim/live 現地目線ビューは置き換えず、選択した避難施設の周辺確認用に別の全画面ビューを開く。
+// キー未設定・パノラマ未提供・読込失敗時はメッセージを出し、現地目線ビュー(OSM)へ戻れるようにする。
+function svDirInfo(facility) {
+  if (!state.pos) return null;
+  const brg = bearingDeg(state.pos.lat, state.pos.lng, facility.lat, facility.lng);
+  const distM = distanceM(state.pos.lat, state.pos.lng, facility.lat, facility.lng);
+  return { compass: compassLabel(brg), brg, distM };
+}
+
+function renderSvOverlay(facility) {
+  const dir = svDirInfo(facility);
+  // 「避難先周辺」の伝承を優先（施設座標の近傍）。一定距離内に無ければ表示しない（遠い記録を「近く」と誤認させない）。
+  const t = traditionsWithin({ lat: facility.lat, lng: facility.lng }, 1500)[0] ?? null;
+  el.svOverlay.innerHTML = streetviewOverlayHtml(facility, dir, t, svExpanded);
+}
+
+// パノラマ領域に重ねるメッセージ（読込中スピナー／未設定・未提供・失敗の案内）。
+// 文言はすべて固定文字列なのでエスケープ不要。spinner時はボタンを出さない。
+function showSvMessage(title, desc, { spinner = false } = {}) {
+  const f = state.streetviewFacility;
+  const buttons = spinner ? "" : `
+    <div class="svMsgBtns">
+      ${f ? `<button id="svToSim" type="button" class="primary">🧭 現地目線ビュー（OSM）を開く</button>` : ""}
+      <button id="svMsgClose" type="button">✕ 閉じる</button>
+    </div>`;
+  el.svMessage.innerHTML = `
+    <div class="svMsgBox">
+      ${spinner ? `<div class="svSpinner" aria-hidden="true"></div>` : ""}
+      <div class="svMsgTitle">${title}</div>
+      ${desc ? `<div class="svMsgDesc">${desc}</div>` : ""}
+      ${buttons}
+    </div>`;
+  el.svMessage.hidden = false;
+  el.svMessage.querySelector("#svMsgClose")?.addEventListener("click", closeStreetView);
+  el.svMessage.querySelector("#svToSim")?.addEventListener("click", () => {
+    const fac = state.streetviewFacility;
+    closeStreetView();
+    if (fac) { state.arMode = "sim"; switchTab("ar"); startAR(fac); } // 既存のOSM現地目線ビューへフォールバック
+  });
+}
+
+function hideSvMessage() {
+  el.svMessage.hidden = true;
+  el.svMessage.innerHTML = "";
+}
+
+async function openStreetView(facility) {
+  if (!facility || facility.lat == null) return; // 座標の無い施設はStreet View対象外
+  state.selected = facility;
+  state.streetviewFacility = facility;
+  svExpanded = false;
+  el.streetView.hidden = false;
+  el.svPano.innerHTML = "";
+  renderSvOverlay(facility); // 施設名・種別・理由・方向・伝承・注意文は最初から読める
+
+  if (!SV.hasApiKey()) {
+    showSvMessage("Google Street View APIキーが未設定です。",
+      "OSM/OSRM の現地目線ビュー（カメラ不要）はそのままご利用いただけます。");
+    return;
+  }
+  showSvMessage("Googleストリートビューを読み込み中…", "", { spinner: true });
+
+  let maps;
+  try {
+    maps = await SV.loadGoogleMaps();
+  } catch {
+    showSvMessage("Googleストリートビューを読み込めませんでした。",
+      "ネットワークまたはAPIキー設定をご確認ください。現地目線ビュー（OSM）をご利用ください。");
+    return;
+  }
+  if (state.streetviewFacility !== facility) return; // 読込中に閉じた/別施設へ切替えた
+
+  try {
+    const found = await SV.findPanorama(maps, facility.lat, facility.lng);
+    if (state.streetviewFacility !== facility) return;
+    if (!found) {
+      showSvMessage("この地点周辺のGoogleストリートビューが見つかりませんでした。",
+        "現地目線ビュー（OSM）なら同じ場所を確認できます。");
+      return;
+    }
+    // 初期方位は現在地→避難施設の bearing（現在地が無ければ北）。0=北・時計回りでPOV heading と一致。
+    const heading = state.pos ? bearingDeg(state.pos.lat, state.pos.lng, facility.lat, facility.lng) : 0;
+    hideSvMessage();
+    SV.initPanorama(maps, el.svPano, {
+      location: found.location.latLng, pano: found.location.pano, heading,
+    });
+  } catch {
+    showSvMessage("Googleストリートビューの表示中に問題が発生しました。",
+      "現地目線ビュー（OSM）をご利用ください。");
+  }
+}
+
+function closeStreetView() {
+  SV.destroyPanorama();
+  el.streetView.hidden = true;
+  el.svOverlay.innerHTML = "";
+  hideSvMessage();
+  state.streetviewFacility = null;
+  svExpanded = false;
+}
+
 // ---- 初期化 ----
 function init() {
   MapView.initMap(el.map);
@@ -521,6 +634,14 @@ function init() {
   el.arZoomIn.addEventListener("click", () => AR.zoomBy(1.25));
   el.arZoomOut.addEventListener("click", () => AR.zoomBy(1 / 1.25));
   el.arWalkResetBtn.addEventListener("click", () => AR.resetWalk?.());
+  // ストリートビュー: 終了ボタンと下部カードの折りたたみトグル
+  el.svExit.addEventListener("click", closeStreetView);
+  el.svOverlay.addEventListener("click", (e) => {
+    if (e.target.closest('[data-act="toggleSv"]')) {
+      svExpanded = !svExpanded;
+      if (state.streetviewFacility) renderSvOverlay(state.streetviewFacility);
+    }
+  });
   setupDpad();
   setupSheet();
   el.travelToggle.querySelectorAll("button").forEach((b) =>

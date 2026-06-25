@@ -10,6 +10,12 @@ const NOTICE =
   "このシステムは平時の防災学習・避難訓練支援を目的とした試作です。実際の災害時は自治体・気象庁・消防・警察等の公式情報に従って避難してください。";
 const TRADITION_NOTE =
   "伝承・史料は避難判断の決定根拠ではなく、公的な津波避難施設情報と組み合わせて理解するための補助情報です。伝承だけで特定の場所・経路の安全/危険を断定しません。";
+const STREETVIEW_NOTE =
+  "Googleストリートビューの映像はGoogle提供の参考情報で、撮影時点の街並みです。現在の状況や正式な徒歩避難経路を示すものではありません。実際の避難は自治体・気象庁等の公式情報に従ってください。";
+
+// API キーが設定されている時だけストリートビュー導線を有効化する（map.js と同じ env を参照）。
+// 値そのものは使わず有無だけを見る。キー未設定でも既存の OSM/OSRM 現地目線ビューはそのまま使える。
+const STREETVIEW_ENABLED = Boolean(import.meta.env?.VITE_GOOGLE_MAPS_API_KEY);
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g,
@@ -23,6 +29,17 @@ function badge(r) {
 
 function srcHtml(r) {
   return `<div class="src">出典: <a href="${esc(r.source_url)}" target="_blank" rel="noopener">${esc(r.source_title)}</a></div>`;
+}
+
+// Googleストリートビューを開く追加ボタン。既存の「地図で経路」「現地目線で案内」は変更せず、
+// これを別ボタンとして添える。座標の無い施設は対象外。キー未設定時は無効化して理由を示す。
+function streetviewBtnHtml(f, label = "📷 Googleストリートビューで周辺を見る") {
+  if (!hasPos(f)) return "";
+  if (!STREETVIEW_ENABLED) {
+    return `<button class="svBtn" type="button" disabled
+      title="Google Street View APIキーが未設定です">📷 ストリートビュー（APIキー未設定）</button>`;
+  }
+  return `<button class="svBtn" type="button" data-act="sv" data-id="${esc(f.id)}">${label}</button>`;
 }
 
 // ---------------- 避難施設タブ ----------------
@@ -61,6 +78,7 @@ export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot", pres
         <button data-act="map" data-id="${esc(f.id)}">地図で経路</button>
         <button data-act="ar" data-id="${esc(f.id)}" class="primary">現地目線で案内</button>
       </div>
+      <div class="btnRow">${streetviewBtnHtml(f)}</div>
     </div>`;
   }).join("");
 
@@ -197,7 +215,10 @@ export function renderArTab(el, pos, state, handlers) {
       ${modeToggle}
       <div class="noteSmall">${modeNote}</div>
       <button id="btnStartAR" class="bigStart">${startLabel}</button>
-      <div class="btnRow"><button data-act="map" data-id="${esc(f.id)}">地図で経路を見る</button></div>
+      <div class="btnRow">
+        <button data-act="map" data-id="${esc(f.id)}">地図で経路を見る</button>
+        ${streetviewBtnHtml(f, "📷 ストリートビュー")}
+      </div>
     </div>
     ${t ? `<div class="card">
       <h3>${badge(t)}近くの伝承・史料: ${esc(t.title)}</h3>
@@ -254,6 +275,7 @@ function bindActs(el, handlers) {
       if (act === "ar") handlers.onSelectAr(b.dataset.id);
       if (act === "mapt") handlers.onPanTo(+b.dataset.lat, +b.dataset.lng);
       if (act === "learn") handlers.onLearnTradition(b.dataset.id);
+      if (act === "sv") handlers.onStreetView?.(b.dataset.id);
     });
   });
 }
@@ -306,5 +328,32 @@ export function learnOverlayHtml(t) {
     <div class="why" style="border-left-color:#ef6c00;background:#fff7ef">🧭 避難への意味づけ: ${esc(t.evacuation_message)}</div>
     <div class="caution">${esc(t.caution)}</div>
     ${srcHtml(t)}
+  </div>`;
+}
+
+// ストリートビュー画面の下部オーバーレイ（折りたたみ式）。パノラマ上に施設情報・方向・伝承・注意文を残す。
+//   dir: { compass, brg, distM } 現在地→避難施設の方向・距離（現在地が無ければ null）
+//   t:   近くの伝承・史料（無ければ null）
+export function streetviewOverlayHtml(f, dir, t, expanded = false) {
+  const heightLine = f.evacuation_height_m != null
+    ? `避難可能高さ ${esc(f.evacuation_height_m)}m ／ ${esc(f.evacuation_place ?? "")}`
+    : `避難可能場所: ${esc(f.evacuation_place ?? "")}`;
+  const dirShort = dir ? `現在地から <b>${esc(dir.compass)}</b> 方向・<b>${formatDist(dir.distM)}</b>` : "";
+  const head = `📷 ${esc(f.name)}${dirShort ? `　${dirShort}` : ""}`;
+  const fcv = coordCaveat(f);            // 施設座標が推定の場合の「おおよその位置」注記（confidence由来）
+  const tcv = t ? coordCaveat(t) : null; // 伝承の代表点/面情報の注記（location_kind由来）
+  const body = `
+    <div class="navRow">種別: ${esc(f.type)}${f.subtype ? `（${esc(f.subtype)}）` : ""}</div>
+    <div class="navRow">${heightLine}</div>
+    ${fcv ? `<div class="navRow">📍 ${esc(fcv)}</div>` : ""}
+    ${dir ? `<div class="navRow">現在地から避難施設の方向: <b>${esc(dir.compass)}</b>（北から${dir.brg.toFixed(0)}°）・<b>${formatDist(dir.distM)}</b>（直線距離）</div>` : ""}
+    <div class="why">理由: ${esc(f.why)}</div>
+    ${t ? `<div class="caution">📜 近くの伝承・史料: ${esc(t.title)}（約${formatDist(t._dist)}）${tcv ? `・${esc(tcv)}` : ""} — ${esc(TRADITION_NOTE)}</div>` : ""}
+    <div class="navSrc">${esc(STREETVIEW_NOTE)}<br>地図・パノラマ © Google。表示は参考であり正式な徒歩避難経路ではありません。</div>`;
+  return `<div class="svCard${expanded ? " expanded" : ""}">
+    <button class="svToggle" type="button" data-act="toggleSv">
+      <span class="navHead">${head}</span><span class="navChev">${expanded ? "▾" : "▸"}</span>
+    </button>
+    <div class="svBody">${body}</div>
   </div>`;
 }
