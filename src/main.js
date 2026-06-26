@@ -1,6 +1,6 @@
 // アプリ全体の制御: タブ切替・現在地(GPS/デモ)・地図・AR起動
 import "./style.css";
-import { demoLocations, facilityById, traditionById, nearestTradition, traditionsWithin, nearestTsunamiFacilities } from "./data.js";
+import { demoLocations, facilityById, traditionById, nearestTradition, traditionsWithin, nearestTsunamiFacilities, coordCaveat } from "./data.js";
 import * as MapView from "./map.js";
 import * as AR from "./ar.js";
 import * as SV from "./streetview.js";
@@ -80,6 +80,12 @@ const el = {
 let arMini = null;
 let svMini = null;
 let svGuideRaf = 0; // pov_changed連発でも描画を間引く（rAFで1フレーム1回）
+
+// Street View の名前ラベル(InfoWindow)へ施設名を埋める時の最小エスケープ（データは自前JSONだが念のため）
+function escHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 
 const handlers = {
   onShowRoute: (id) => showRouteFor(id),
@@ -529,11 +535,14 @@ function renderSvOverlay(facility) {
   el.svOverlay.innerHTML = streetviewOverlayHtml(facility, dir, t, state.svRoute, svExpanded);
 }
 
-// パノラマの現在位置・POVの向きから「次にどっちへ歩くか」を更新する（道順案内の中核）。
-//  - 道路経路(state.svRoute)があれば道なりの look-ahead 方位、無ければ避難施設への直線方位。
-//  - その方位を POV heading（見ている向き）と比べ、「右へ◯° / ✓ この向き」と見ている方向基準で出す。
-//  - 中央の矢印は (経路方位 − POV) だけ回し、ミニマップは経路線＋現パノラマ位置＋視野を描く。
+// パノラマの現在位置・POVの向きから案内を更新する（道順案内の中核）。
+//  - 遠い間: 道路経路(state.svRoute)の道なり look-ahead 方位を指す（道に沿って前進）。
+//  - 避難先が近い/経路なし: 避難先“そのもの”への直線方位を指す（到着付近でも手がかりを消さない＝
+//    どの建物が避難先かは別途パノラマ上のマーカー/ラベルで固定表示している）。
+//  - その方位を POV heading（見ている向き）と比べ「右へ◯° / ✓ 正面」と見ている向き基準で出す。
+//  - 中央の矢印は (方位 − POV) だけ回し、ミニマップは経路線＋現パノラマ位置＋視野を描く。
 // position_changed / pov_changed で呼ばれる（Googleの矢印で歩く・見回すと発火）。
+const SV_NEAR_M = 60; // これより近い／経路が無い時は避難先そのものを指す
 function updateSvGuidance() {
   const f = state.streetviewFacility;
   if (!f) return;
@@ -543,31 +552,37 @@ function updateSvGuidance() {
   // ミニマップ（経路線＋現パノラマ位置＋視野の扇形）。経路が無ければ避難施設への直線破線になる。
   drawMiniMap(svMini, panoPos, pov, f, state.svRoute?.geometry ?? null);
 
-  // 次に進む方位・距離: 道路経路があれば道なり、無ければ施設への直線。
+  // 避難先そのものへの直線方位・距離（到着付近・経路なしはこれを指す）
+  const facBrg = bearingDeg(panoPos.lat, panoPos.lng, f.lat, f.lng);
+  const facDist = distanceM(panoPos.lat, panoPos.lng, f.lat, f.lng);
+  // 道路経路があれば道なりの look-ahead。残りが近い/経路なしは避難先そのものを指すモードへ。
   const g = routeGuidance(state.svRoute?.geometry?.coordinates, panoPos, 25);
-  const hasRoute = Boolean(g);
-  const brg = hasRoute ? g.brg : bearingDeg(panoPos.lat, panoPos.lng, f.lat, f.lng);
-  const distAhead = hasRoute ? g.distAhead : distanceM(panoPos.lat, panoPos.lng, f.lat, f.lng);
-  const remainingM = hasRoute ? g.remainingM : distanceM(panoPos.lat, panoPos.lng, f.lat, f.lng);
+  const remainingM = g ? g.remainingM : facDist;
+  const aimFacility = !g || remainingM < SV_NEAR_M;
 
-  // 避難先付近に着いたら左右案内をやめ、注意文に切り替える（伝承で安全/危険は断定しない）。
-  if (remainingM != null && remainingM < 20) {
-    el.svGuide.textContent = "避難先付近です。実際の避難は公式情報に従ってください。";
-    el.svGuide.classList.remove("aligned");
-    el.svArrow.hidden = true;
-    return;
-  }
+  const brg = aimFacility ? facBrg : g.brg;
+  const dist = aimFacility ? facDist : g.distAhead;
   // POV(見ている向き)基準の左右差。Street Viewに端末方位は無いので getPov().heading を基準にする。
   const diff = Math.round(((brg - pov + 540) % 360) - 180);
   const aligned = Math.abs(diff) < 15;
-  const turn = aligned ? "✓ この向き" : `${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°`;
-  const lead = hasRoute ? "この道を" : "避難先へ";
-  const remainTxt = remainingM != null ? `　のこり<b>${formatDist(remainingM)}</b>` : "";
-  el.svGuide.innerHTML =
-    `${hasRoute ? "🧭" : "↗"} ${lead}<b>${turn}</b>・約${Math.round(distAhead)}m${remainTxt}${hasRoute ? "" : "（直線）"}`;
+  const behind = Math.abs(diff) > 150;
+  const cav = Boolean(coordCaveat(f)); // 推定座標なら「おおよその位置」を併記
+
+  if (aimFacility) {
+    // 避難先そのものを指す（到着付近で手がかりが消えない＝今回の改善点）
+    const where = aligned ? "✓ 正面（ピンの建物）"
+      : behind ? `うしろ（${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°）`
+        : `${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°`;
+    el.svGuide.innerHTML =
+      `🚩 避難先「<b>${escHtml(f.name)}</b>」は${where}・約${Math.round(dist)}m${cav ? "（おおよその位置）" : ""}`;
+  } else {
+    const turn = aligned ? "✓ この向き" : `${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°`;
+    el.svGuide.innerHTML =
+      `🧭 この道を<b>${turn}</b>・約${Math.round(dist)}m　のこり<b>${formatDist(remainingM)}</b>`;
+  }
   el.svGuide.classList.toggle("aligned", aligned);
 
-  // 中央の進行方向矢印（POV基準で回転。0°=正面＝この向きでまっすぐ）。
+  // 中央の進行方向矢印（POV基準で回転。0°=正面＝この向き）。到着付近でも消さず避難先を指す。
   el.svArrow.hidden = false;
   el.svArrow.classList.toggle("aligned", aligned);
   if (el.svArrowInner) el.svArrowInner.style.transform = `rotate(${diff}deg)`;
@@ -663,6 +678,17 @@ async function openStreetView(facility) {
     hideSvMessage();
     SV.initPanorama(maps, el.svPano, {
       location: found.location.latLng, pano: found.location.pano, heading,
+    });
+    // 避難先（目的地）をパノラマ上にマーカー＋名前ラベルで固定表示（「どの建物が避難先か」を直接示す）。
+    // 推定座標の施設は「おおよその位置」を併記し、ピンポイントを断定しない（CLAUDE.md）。
+    const cav = coordCaveat(facility);
+    const typeNote = facility.type ? `（${facility.type}）` : "";
+    SV.setFacilityMarker(maps, {
+      position: { lat: facility.lat, lng: facility.lng },
+      title: `避難先: ${facility.name}${typeNote}${cav ? "・おおよその位置" : ""}`,
+      labelHtml:
+        `<div style="font:700 12px sans-serif;color:#0d2b45">🚩 避難先: ${escHtml(facility.name)}</div>` +
+        `<div style="font:11px sans-serif;color:#41505b">${escHtml(facility.type ?? "")}${cav ? "・おおよその位置（推定）" : ""}</div>`,
     });
     SV.onPanoramaUpdate(scheduleSvGuidance); // Google矢印で前進/見回し→道順ガイド更新
     updateSvGuidance();                      // 経路取得前は施設への直線方位で案内
