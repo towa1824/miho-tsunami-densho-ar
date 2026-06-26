@@ -274,8 +274,9 @@ export function renderAboutTab(el) {
       <ul style="margin:4px 0 0 16px;padding:0;font-size:11px">${unList || "<li>なし</li>"}</ul>
     </div>
     <div class="card">
-      <div class="noteSmall">地図・現地目線ビューの町並み3D: © OpenStreetMap contributors（ODbL・Overpass API経由。
-      建物の形と高さはタグからの推定を含む概形）／ 経路: OSRM（参考表示）／
+      <div class="noteSmall">メイン地図: APIキー設定時は Google Maps（© Google）、未設定時は OpenStreetMap（Leaflet・© OpenStreetMap contributors）。
+      現地目線ビューの町並み3D・ミニマップ: © OpenStreetMap contributors（ODbL・Overpass API経由。
+      建物の形と高さはタグからの推定を含む概形）／ 経路: OSRM または Google Routes（いずれも参考表示）／
       避難施設・伝承データの出典は各カードに記載。本試作は研究・学習目的であり、最新の指定状況は必ず静岡市の公式情報で確認してください。</div>
     </div>`;
 }

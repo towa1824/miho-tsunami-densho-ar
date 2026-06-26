@@ -72,14 +72,16 @@ npm run validate:data # data/*.json の健全性チェック（id重複・出典
 
 Google Maps Platform の API キーを設定すると、次の機能が有効になります（**未設定でもアプリは動きます**）。
 
-1. **Googleストリートビュー**: 避難施設カード・「現地目線」タブの
+1. **メイン地図が Google Maps になる**: 画面メインの地図が **Maps JavaScript API の `google.maps.Map`** になる
+   （未設定時は従来どおり Leaflet + OpenStreetMap。Google の読込に失敗した場合も自動で Leaflet+OSM へフォールバック）。
+2. **Googleストリートビュー**: 避難施設カード・「現地目線」タブの
    **「📷 Googleストリートビューで周辺を見る」** から、選択した避難先の周辺を Street View で確認できる
    （Maps JavaScript API の Street View Panorama を使用）。
-2. **ストリートビュー内の2D地図**: ストリートビュー画面の **「🗺 2D地図」** で、
+3. **ストリートビュー内の2D地図**: ストリートビュー画面の **「🗺 2D地図」** で、
    **Maps JavaScript API の `google.maps.Map`（2D地図）** を開き、参考経路・現在のパノラマ位置・
    見ている向き・経路から外れた時の戻り方向を確認できる（小さく表示→「拡大」で大きく表示）。
    ※ ストリートビュー上の移動矢印は撮影点に依存し経路通りに進めない場面があるため、その補助。
-3. **経路**: 「地図で経路 / 現地目線で案内」で表示する1本の経路取得が
+4. **経路**: 「地図で経路 / 現地目線で案内」で表示する1本の経路取得が
    OSRM デモサーバ → Google Routes API（道路距離・所要時間の品質向上）に切り替わる。
 
 設定手順:
@@ -264,7 +266,9 @@ AR（現地目線ビュー）は原則 `exact_point` を主対象とし、`repre
 ## 技術構成
 
 - **WebAR**: LocAR.js（位置情報AR）+ three.js（描画）+ Vite — PDFガイドの推奨構成に準拠
-- **地図**: Leaflet + OpenStreetMap タイル（APIキー不要）
+- **メイン地図**: `VITE_GOOGLE_MAPS_API_KEY` 設定時は **Google Maps（Maps JavaScript API の `google.maps.Map`）**、
+  未設定時は **Leaflet + OpenStreetMap タイル（APIキー不要）** に自動フォールバック（`src/map.js` がバックエンドを選択、
+  `src/map-google.js` / `src/map-leaflet.js`）。Google 読込に失敗した場合も Leaflet+OSM へフォールバックしアプリは壊れない
 - **町並み3D**: OpenStreetMap（Overpass API・無料/APIキー不要）から建物・道路・水域・緑地・海岸線を取得し
   three.js で立体化。localStorage に7日キャッシュ。© OpenStreetMap contributors（ODbL）
 - **経路**: OSRM（routing.openstreetmap.de・APIキー不要のデモサーバ）。徒歩=foot プロファイル（歩行者が通行可能な道路ネットワーク）、車=car プロファイル（車道）で道筋を出し分ける。距離・所要時間は OSRM の道路距離/duration を使う。**いずれも「参考経路」であり徒歩最短ルートを保証しない**。避難施設タブでは現在地確定時に候補へ道路距離を引いて並べ替える（取得できなければ直線距離順）。OSRM 不達時は灰色破線の「直線参考」にフォールバックし、その旨を明示する
@@ -287,7 +291,10 @@ miho-tsunami-densho-ar/
 ├── index.html
 ├── src/
 │   ├── main.js           # タブ・現在地・地図/AR の制御
-│   ├── map.js            # Leaflet 地図（マーカー色分け・近傍・経路）
+│   ├── map.js            # メイン地図のファサード（キー有=Google / 無=Leaflet を選択）
+│   ├── map-google.js     # メイン地図 Google Maps バックエンド（google.maps.Map・任意）
+│   ├── map-leaflet.js    # メイン地図 Leaflet+OSM バックエンド（既定・APIキー不要）
+│   ├── route.js          # 経路取得（OSRM / Google Routes・地図バックエンド非依存）
 │   ├── ar.js             # LocAR.js AR（矢印・説明ボード・伝承ボード・記録高ゲージ）
 │   ├── town.js           # 町並み3D（OSM Overpass: 建物押し出し・道路・水域・海岸線）
 │   ├── streetview.js     # Googleストリートビュー（Maps JS API の動的ロード・Street View Panorama・任意）
