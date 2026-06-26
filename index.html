@@ -55,6 +55,15 @@
       </div>
       <button id="arExit" type="button">✕ 終了</button>
     </div>
+
+    <!-- Googleストリートビュー（追加ビュー）。既存の現地目線ビュー(#arView)とは独立した全画面表示。
+         APIキー未設定・パノラマ未提供時は #svMessage を出し、既存ビューへ戻れるようにする。 -->
+    <div id="streetView" hidden>
+      <div id="svPano"></div>
+      <div id="svOverlay"></div>
+      <div id="svMessage" hidden></div>
+      <button id="svExit" type="button">✕ 終了</button>
+    </div>
   </main>
 
   <button id="sheetHandle" type="button" aria-label="一覧パネルの高さを変更（スワイプ／タップ）"
