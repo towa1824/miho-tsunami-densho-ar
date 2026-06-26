@@ -4,12 +4,13 @@ import { demoLocations, facilityById, traditionById, nearestTradition, tradition
 import * as MapView from "./map.js";
 import * as AR from "./ar.js";
 import * as SV from "./streetview.js";
+import * as SVMap from "./streetview-map.js";
 import { initMiniMap, drawMiniMap } from "./minimap.js";
 import {
   renderFacilitiesTab, renderTraditionsTab, renderArTab, renderAboutTab,
   arOverlayHtml, learnOverlayHtml, streetviewOverlayHtml, traditionStreetviewOverlayHtml,
 } from "./ui.js";
-import { distanceM, bearingDeg, destPoint, compassLabel, travelTimeMin, formatDuration, formatDist, routeGuidance, TRAVEL_LABEL } from "./geo.js";
+import { distanceM, bearingDeg, destPoint, compassLabel, travelTimeMin, formatDuration, formatDist, routePositionInfo, TRAVEL_LABEL } from "./geo.js";
 
 const state = {
   pos: null,        // {lat,lng}
@@ -36,6 +37,9 @@ const state = {
   streetviewTradition: null, // 伝承SVで表示中の伝承（avoid: facility と兼用しない）
 };
 let svExpanded = false; // ストリートビューの下部カードの展開状態
+let gmaps = null;       // loadGoogleMaps() で得た window.google.maps（2D地図パネルで再利用）
+let svMapOpen = false;  // Street View 内の2D Google Mapパネルを開いているか
+let svMapExpanded = false; // 2D地図パネルが拡大状態か
 let arStatusMsg = "";
 let navExpanded = false; // ナビカードの展開状態（折りたたみ）
 let headingTimer = null;
@@ -78,6 +82,13 @@ const el = {
   svArrow: document.getElementById("svArrow"),
   svArrowInner: document.getElementById("svArrowInner"),
   svMiniMap: document.getElementById("svMiniMap"),
+  svMapBtn: document.getElementById("svMapBtn"),
+  svGoogleMapPanel: document.getElementById("svGoogleMapPanel"),
+  svGoogleMap: document.getElementById("svGoogleMap"),
+  svGoogleMapExpand: document.getElementById("svGoogleMapExpand"),
+  svGoogleMapClose: document.getElementById("svGoogleMapClose"),
+  svgmRouteMode: document.getElementById("svgmRouteMode"),
+  svgmType: document.getElementById("svgmType"),
 };
 
 // ミニマップは現地目線ビューとStreet Viewで別canvas（同時には開かない）。それぞれ独立インスタンス。
@@ -548,6 +559,7 @@ function renderSvOverlay(facility) {
 //  - 中央の矢印は (方位 − POV) だけ回し、ミニマップは経路線＋現パノラマ位置＋視野を描く。
 // position_changed / pov_changed で呼ばれる（Googleの矢印で歩く・見回すと発火）。
 const SV_NEAR_M = 60; // これより近い／経路が無い時は避難先そのものを指す
+const SV_OFFROUTE_M = 40; // 参考経路からこれ以上離れたら「経路から外れ」警告＋戻る案内（30〜50m目安）
 function updateSvGuidance() {
   if (state.svMode !== "facility") return; // 道順ガイドは避難所モードのみ（伝承モードでは出さない）
   const f = state.streetviewFacility;
@@ -561,43 +573,143 @@ function updateSvGuidance() {
   // 避難先そのものへの直線方位・距離（到着付近・経路なしはこれを指す）
   const facBrg = bearingDeg(panoPos.lat, panoPos.lng, f.lat, f.lng);
   const facDist = distanceM(panoPos.lat, panoPos.lng, f.lat, f.lng);
-  // 道路経路があれば道なりの look-ahead。残りが近い/経路なしは避難先そのものを指すモードへ。
-  const g = routeGuidance(state.svRoute?.geometry?.coordinates, panoPos, 25);
-  const remainingM = g ? g.remainingM : facDist;
-  const aimFacility = !g || remainingM < SV_NEAR_M;
-
-  const brg = aimFacility ? facBrg : g.brg;
-  const dist = aimFacility ? facDist : g.distAhead;
-  // POV(見ている向き)基準の左右差。Street Viewに端末方位は無いので getPov().heading を基準にする。
-  const diff = Math.round(((brg - pov + 540) % 360) - 180);
-  const aligned = Math.abs(diff) < 15;
-  const behind = Math.abs(diff) > 150;
+  // 道路経路があれば道なりの look-ahead と「経路からの外れ具合(offRouteM)・戻る方位」を得る。
+  const info = routePositionInfo(state.svRoute?.geometry?.coordinates, panoPos, 25);
+  const remainingM = info ? info.remainingM : facDist;
+  const aimFacility = !info || remainingM < SV_NEAR_M;
+  // 経路から大きく外れている（矢印では道なりに進めず迂回した等）＝戻る案内に切替える（避難先付近を除く）。
+  const offRoute = Boolean(info) && info.offRouteM > SV_OFFROUTE_M && !aimFacility;
   const cav = Boolean(coordCaveat(f)); // 推定座標なら「おおよその位置」を併記
 
-  if (aimFacility) {
-    // 避難先そのものを指す（到着付近で手がかりが消えない＝今回の改善点）
-    const where = aligned ? "✓ 正面（ピンの建物）"
-      : behind ? `うしろ（${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°）`
-        : `${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°`;
-    el.svGuide.innerHTML =
-      `🚩 避難先「<b>${escHtml(f.name)}</b>」は${where}・約${Math.round(dist)}m${cav ? "（おおよその位置）" : ""}`;
-  } else {
+  let diff, aligned;
+  if (offRoute) {
+    // 経路へ戻る方向（最近点へ向かう方位）を POV 基準で出す。look-ahead より優先。
+    diff = Math.round(((info.returnBearing - pov + 540) % 360) - 180);
+    aligned = Math.abs(diff) < 15;
     const turn = aligned ? "✓ この向き" : `${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°`;
     el.svGuide.innerHTML =
-      `🧭 この道を<b>${turn}</b>・約${Math.round(dist)}m　のこり<b>${formatDist(remainingM)}</b>`;
+      `⚠ 参考経路から約<b>${formatDist(info.offRouteM)}</b>離れています。2D地図で経路を確認してください（経路へ戻るには<b>${turn}</b>）`;
+    el.svGuide.classList.remove("aligned");
+    el.svGuide.classList.add("warn");
+  } else {
+    el.svGuide.classList.remove("warn");
+    const brg = aimFacility ? facBrg : info.brg;
+    const dist = aimFacility ? facDist : info.distAhead;
+    // POV(見ている向き)基準の左右差。Street Viewに端末方位は無いので getPov().heading を基準にする。
+    diff = Math.round(((brg - pov + 540) % 360) - 180);
+    aligned = Math.abs(diff) < 15;
+    const behind = Math.abs(diff) > 150;
+    if (aimFacility) {
+      // 避難先そのものを指す（到着付近で手がかりが消えない）
+      const where = aligned ? "✓ 正面（ピンの建物）"
+        : behind ? `うしろ（${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°）`
+          : `${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°`;
+      el.svGuide.innerHTML =
+        `🚩 避難先「<b>${escHtml(f.name)}</b>」は${where}・約${Math.round(dist)}m${cav ? "（おおよその位置）" : ""}`;
+    } else {
+      const turn = aligned ? "✓ この向き" : `${diff > 0 ? "右" : "左"}へ${Math.abs(diff)}°`;
+      el.svGuide.innerHTML =
+        `🧭 この道を<b>${turn}</b>・約${Math.round(dist)}m　のこり<b>${formatDist(remainingM)}</b>`;
+    }
+    el.svGuide.classList.toggle("aligned", aligned);
   }
-  el.svGuide.classList.toggle("aligned", aligned);
 
-  // 中央の進行方向矢印（POV基準で回転。0°=正面＝この向き）。到着付近でも消さず避難先を指す。
+  // 中央の進行方向矢印（POV基準で回転。0°=正面＝この向き）。外れている時は経路へ戻る方向を指す。
   el.svArrow.hidden = false;
   el.svArrow.classList.toggle("aligned", aligned);
   if (el.svArrowInner) el.svArrowInner.style.transform = `rotate(${diff}deg)`;
+
+  // 2D Google Map パネルが開いていれば、現在位置・向き・経路外れの点線を同期更新する。
+  if (svMapOpen) updateSvMapPanel();
 }
 
 // pov_changed が連発しても1フレーム1回に間引く（カーソルドラッグ中の過剰再描画を防ぐ）。
 function scheduleSvGuidance() {
   if (svGuideRaf) return;
   svGuideRaf = requestAnimationFrame(() => { svGuideRaf = 0; updateSvGuidance(); });
+}
+
+// ---- Street View 内の 2D Google Map パネル（避難所モードのみ・参考経路の確認）----
+// 経路ソース（Google/OSRM/直線）が分かる短いラベル。パネル内に小さく出す。
+function svRouteModeLabel() {
+  const m = state.svRoute?.mode;
+  if (m === "google") return "Google経路・参考";
+  if (m === "osrm") return "OSM道路経路・参考";
+  return "直線参考";
+}
+
+// パネルが開いている間、現在パノラマ位置・向き・経路・経路外れを2D地図へ同期する。
+function updateSvMapPanel() {
+  if (!svMapOpen || state.svMode !== "facility") return;
+  const f = state.streetviewFacility;
+  if (!f) return;
+  const panoPos = SV.getPanoramaPosition();
+  const pov = SV.getPanoramaHeading() ?? 0;
+  const coords = state.svRoute?.geometry?.coordinates ?? null;
+  const info = coords ? routePositionInfo(coords, panoPos, 25) : null;
+  const offRoute = Boolean(info) && info.offRouteM > SV_OFFROUTE_M;
+  if (el.svgmRouteMode) el.svgmRouteMode.textContent = svRouteModeLabel(); // 経路取得後にラベルを更新
+  SVMap.updateStreetViewMap({
+    panoPos, pov, facility: f,
+    routeCoords: coords, routeInfo: info,
+    travelMode: state.svRoute?.travelMode ?? state.travelMode,
+    offRoute,
+  });
+}
+
+// 2D地図パネルを開く（避難所モードかつ Google Maps ロード済みの時のみ）。
+function openSvMap() {
+  if (state.svMode !== "facility" || !gmaps) return;
+  svMapOpen = true;
+  svMapExpanded = false;
+  el.svGoogleMapPanel.hidden = false;
+  el.svGoogleMapPanel.classList.remove("expanded");
+  if (el.svGoogleMapExpand) el.svGoogleMapExpand.textContent = "⤢"; // 小サイズは省スペースのアイコンのみ
+  if (el.svgmRouteMode) el.svgmRouteMode.textContent = svRouteModeLabel();
+  el.svMapBtn.hidden = true;   // 開いている間は起動ボタンを隠す
+  el.svMiniMap.hidden = true;  // 簡易ミニマップは隠し、2D地図に集約（重複表示を避ける）
+  const panoPos = SV.getPanoramaPosition();
+  const center = panoPos ?? { lat: f0().lat, lng: f0().lng };
+  SVMap.initStreetViewMap(gmaps, el.svGoogleMap, { center });
+  syncSvMapTypeBtn();   // 前回の地図/空撮の選択を引き継いでボタン表示を合わせる
+  updateSvMapPanel();
+}
+// パネルの中心初期値に使う施設（null安全のための小ヘルパ）
+function f0() { return state.streetviewFacility ?? { lat: 34.9, lng: 138.5 }; }
+
+// 2D地図パネルを閉じて Street View へ戻る。
+function closeSvMap() {
+  svMapOpen = false;
+  svMapExpanded = false;
+  SVMap.destroyStreetViewMap();
+  el.svGoogleMapPanel.hidden = true;
+  el.svGoogleMapPanel.classList.remove("expanded");
+  if (state.svMode === "facility") { // 避難所モードなら起動ボタン・ミニマップを復帰
+    el.svMapBtn.hidden = false;
+    el.svMiniMap.hidden = false;
+  }
+}
+
+// 小⇄拡大の切替。Google Map にサイズ変更を通知して再フィットする。
+function toggleSvMapExpand() {
+  svMapExpanded = !svMapExpanded;
+  el.svGoogleMapPanel.classList.toggle("expanded", svMapExpanded);
+  if (el.svGoogleMapExpand) el.svGoogleMapExpand.textContent = svMapExpanded ? "⤡ 縮小" : "⤢";
+  SVMap.resizeStreetViewMap();
+  updateSvMapPanel();
+}
+
+// 地図 ⇄ 空撮(航空写真) トグル。ボタンは「次に切り替わる方」を示す（空撮中は🗺、地図中は🛰）。
+function syncSvMapTypeBtn() {
+  if (!el.svgmType) return;
+  const aerial = SVMap.getStreetViewMapType() === "hybrid";
+  el.svgmType.textContent = aerial ? "🗺" : "🛰";
+  el.svgmType.title = aerial ? "地図に切替" : "空撮（航空写真）に切替";
+}
+function toggleSvMapType() {
+  const next = SVMap.getStreetViewMapType() === "hybrid" ? "roadmap" : "hybrid";
+  SVMap.setStreetViewMapType(next);
+  syncSvMapTypeBtn();
 }
 
 // パノラマ領域に重ねるメッセージ（読込中スピナー／未設定・未提供・失敗の案内）。
@@ -654,9 +766,15 @@ async function openStreetView(facility) {
   el.streetView.hidden = false;
   el.svPano.innerHTML = "";
   el.svGuide.textContent = "";
-  el.svGuide.classList.remove("aligned");
+  el.svGuide.classList.remove("aligned", "warn");
   el.svArrow.hidden = true;
   el.svMiniMap.hidden = false; // 避難所の道順案内では経路ミニマップを出す（伝承SVで隠した状態から戻す）
+  // 2D地図パネルは初期状態（閉じる）。起動ボタンはパノラマ表示後に出す（読込/失敗中は隠す）。
+  svMapOpen = false; svMapExpanded = false;
+  SVMap.destroyStreetViewMap();
+  el.svGoogleMapPanel.hidden = true;
+  el.svGoogleMapPanel.classList.remove("expanded");
+  el.svMapBtn.hidden = true;
   renderSvOverlay(facility); // 施設名・種別・理由・方向・伝承・注意文は最初から読める
 
   if (!SV.hasApiKey()) {
@@ -674,6 +792,7 @@ async function openStreetView(facility) {
       "ネットワークまたはAPIキー設定をご確認ください。現地目線ビュー（OSM）をご利用ください。");
     return;
   }
+  gmaps = maps; // 2D Google Map パネルでも同じロード結果を再利用する（loaderを増やさない）
   if (state.streetviewFacility !== facility) return; // 読込中に閉じた/別施設へ切替えた
 
   // パノラマは経路取得を待たずに先に開く（表示を速く）。
@@ -714,6 +833,7 @@ async function openStreetView(facility) {
     });
     SV.onPanoramaUpdate(scheduleSvGuidance); // Google矢印で前進/見回し→道順ガイド更新
     updateSvGuidance();                      // 経路取得前は施設への直線方位で案内
+    el.svMapBtn.hidden = false;              // パノラマ表示成功 → 2D地図の起動ボタンを出す
   } catch {
     showSvMessage("Googleストリートビューの表示中に問題が発生しました。",
       "現地目線ビュー（OSM）をご利用ください。");
@@ -758,9 +878,15 @@ async function openTraditionStreetView(t) {
   el.svPano.innerHTML = "";
   // 道順HUDは伝承モードでは一切出さない（学習であってナビではない）
   el.svGuide.textContent = "";
-  el.svGuide.classList.remove("aligned");
+  el.svGuide.classList.remove("aligned", "warn");
   el.svArrow.hidden = true;
   el.svMiniMap.hidden = true;       // 経路ミニマップも出さない（地点中心の参考も省く）
+  // 2D地図（避難経路の参考）は学習モードでは出さない。起動ボタン・パネルを隠して破棄する。
+  svMapOpen = false; svMapExpanded = false;
+  SVMap.destroyStreetViewMap();
+  el.svGoogleMapPanel.hidden = true;
+  el.svGoogleMapPanel.classList.remove("expanded");
+  el.svMapBtn.hidden = true;
   renderTraditionSvOverlay(t);      // 解説カード（出典・注意文）は最初から開閉して読める
 
   if (!SV.hasApiKey()) {
@@ -822,10 +948,16 @@ async function openTraditionStreetView(t) {
 function closeStreetView() {
   if (svGuideRaf) { cancelAnimationFrame(svGuideRaf); svGuideRaf = 0; }
   SV.destroyPanorama();
+  // 2D Google Map パネルも破棄（マーカー/ポリライン/リスナを残さない）
+  svMapOpen = false; svMapExpanded = false;
+  SVMap.destroyStreetViewMap();
+  el.svGoogleMapPanel.hidden = true;
+  el.svGoogleMapPanel.classList.remove("expanded");
+  el.svMapBtn.hidden = true;
   el.streetView.hidden = true;
   el.svOverlay.innerHTML = "";
   el.svGuide.textContent = "";
-  el.svGuide.classList.remove("aligned");
+  el.svGuide.classList.remove("aligned", "warn");
   el.svArrow.hidden = true;
   el.svMiniMap.hidden = false; // 次の避難所SV（道順案内）のために戻す
   hideSvMessage();
@@ -877,6 +1009,11 @@ function init() {
       else if (state.streetviewFacility) renderSvOverlay(state.streetviewFacility);
     }
   });
+  // Street View 内の2D Google Map: 開く／拡大・縮小／地図⇄空撮／閉じる
+  el.svMapBtn.addEventListener("click", openSvMap);
+  el.svGoogleMapExpand.addEventListener("click", toggleSvMapExpand);
+  el.svgmType.addEventListener("click", toggleSvMapType);
+  el.svGoogleMapClose.addEventListener("click", closeSvMap);
   setupDpad();
   setupSheet();
   el.travelToggle.querySelectorAll("button").forEach((b) =>

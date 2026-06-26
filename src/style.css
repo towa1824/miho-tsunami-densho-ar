@@ -466,6 +466,60 @@ body.sheet-collapsed #panel { padding-top: 0; padding-bottom: 0; overflow: hidde
 }
 .btnRow .svBtn:disabled { border-color: #c0c6cc; color: #9aa3ab; background: #f3f5f7; }
 
+/* 道順ピルの「経路から外れています」警告（オレンジ寄りの赤）。aligned(緑)とは別状態 */
+#svGuide.warn { background: rgba(198,75,0,.94); }
+#svGuide.warn b { color: #ffe0b2; }
+
+/* ===== Street View 内の 2D Google Map（避難所モードのみ・参考経路の確認）===== */
+/* 2D地図を開くボタン（既定は小さく右下寄り。Googleロゴ/下部コントロールを覆わない位置） */
+#svMapBtn {
+  position: absolute; left: 8px; bottom: 80px; z-index: 522;
+  background: rgba(255,255,255,.95); border: 1px solid #1a73e8; color: #1558b0;
+  border-radius: 18px; padding: 8px 14px; font-size: 13px; font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+}
+#svMapBtn[hidden] { display: none; }
+
+/* 地図パネル。既定は小（右上・ミニマップ跡地）、.expanded で画面の大部分を使う。
+   Google Map 自身のロゴ・著作権・帰属は #svGoogleMap 内に表示され、隠さない。 */
+.svGoogleMapPanel {
+  position: absolute; top: 52px; right: 8px; z-index: 541;
+  /* 小サイズは情報カード(#svOverlay: right:148px)やチェブロンに被らない幅にする（左端 ≥ カード右端）。 */
+  width: 140px; height: 160px;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: #fff; border-radius: 10px; box-shadow: 0 3px 14px rgba(0,0,0,.5);
+}
+.svGoogleMapPanel[hidden] { display: none; }
+.svGoogleMapPanel.expanded {
+  top: 52px; left: 8px; right: 8px; bottom: 80px; width: auto; height: auto;
+}
+.svgmBar {
+  display: flex; align-items: center; gap: 6px; padding: 5px 7px;
+  background: #0d2b45; color: #fff; font-size: 11.5px;
+}
+.svgmTitle { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.svgmMode {
+  font-size: 10px; background: rgba(255,255,255,.18); color: #ffd54f;
+  border-radius: 8px; padding: 1px 7px; white-space: nowrap;
+  display: inline-block; max-width: 96px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle;
+}
+.svgmMode:empty { display: none; }
+.svgmBtn {
+  flex: 0 0 auto; border: none; border-radius: 7px; cursor: pointer;
+  background: rgba(255,255,255,.16); color: #fff; font-size: 12px; font-weight: 700;
+  padding: 5px 8px; line-height: 1;
+}
+.svGoogleMap { flex: 1; min-height: 0; background: #e9eef2; }
+.svGoogleMapNote {
+  font-size: 10px; color: #41505b; line-height: 1.45; padding: 5px 7px;
+  background: #f7f9fb; max-height: 30%; overflow-y: auto;
+}
+.svGoogleMapNote b { color: #b34700; }
+/* 小サイズではタイトル・経路ラベル・注意文を畳んでボタンと地図にスペースを割く（拡大時に全文表示） */
+.svGoogleMapPanel:not(.expanded) .svgmTitle,
+.svGoogleMapPanel:not(.expanded) .svgmMode,
+.svGoogleMapPanel:not(.expanded) .svGoogleMapNote { display: none; }
+
 .leaflet-popup-content { font-size: 12px; line-height: 1.4; margin: 10px 12px; }
 .leaflet-popup-content .src { font-size: 10px; color: #777; }
 .leaflet-popup-content .src a { word-break: break-all; }

@@ -274,8 +274,9 @@ export function renderAboutTab(el) {
       <ul style="margin:4px 0 0 16px;padding:0;font-size:11px">${unList || "<li>なし</li>"}</ul>
     </div>
     <div class="card">
-      <div class="noteSmall">地図・現地目線ビューの町並み3D: © OpenStreetMap contributors（ODbL・Overpass API経由。
-      建物の形と高さはタグからの推定を含む概形）／ 経路: OSRM（参考表示）／
+      <div class="noteSmall">メイン地図: APIキー設定時は Google Maps（© Google）、未設定時は OpenStreetMap（Leaflet・© OpenStreetMap contributors）。
+      現地目線ビューの町並み3D・ミニマップ: © OpenStreetMap contributors（ODbL・Overpass API経由。
+      建物の形と高さはタグからの推定を含む概形）／ 経路: OSRM または Google Routes（いずれも参考表示）／
       避難施設・伝承データの出典は各カードに記載。本試作は研究・学習目的であり、最新の指定状況は必ず静岡市の公式情報で確認してください。</div>
     </div>`;
 }
@@ -373,6 +374,7 @@ export function streetviewOverlayHtml(f, dir, t, route = null, expanded = false)
     ${fcv ? `<div class="navRow">📍 ${esc(fcv)}</div>` : ""}
     ${dir ? `<div class="navRow">現在地から避難施設の方向: <b>${esc(dir.compass)}</b>（北から${dir.brg.toFixed(0)}°）・<b>${formatDist(dir.distM)}</b>（直線距離）</div>` : ""}
     ${routeRow}
+    <div class="navRow">🗺 ストリートビューの矢印で経路通りに進めない時は、画面の「🗺 2D地図」ボタンから Google Map で参考経路（現在位置・向き・経路へ戻る方向）を確認できます。</div>
     <div class="why">理由: ${esc(f.why)}</div>
     ${t ? `<div class="caution">📜 近くの伝承・史料: ${esc(t.title)}（約${formatDist(t._dist)}）${tcv ? `・${esc(tcv)}` : ""} — ${esc(TRADITION_NOTE)}</div>` : ""}
     <div class="navSrc">${esc(STREETVIEW_NOTE)}<br>地図・パノラマ © Google。道順案内は参考表示であり正式な徒歩避難経路ではありません${routeSrc}。</div>`;

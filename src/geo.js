@@ -75,11 +75,18 @@ export function fromEastNorth(east, north, lat0, lng0) {
   };
 }
 
-// 道路経路(GeoJSON LineStringの coords: [[lng,lat],…])上で、現在地posに最も近い点から
-// 道なりに aheadM[m] 先の点を求め、その点への方位(真北基準)・距離、経路の残距離を返す。
-// Street View の「次にどっちへ歩くか」算出に使う（AR の routeProgress を lat/lng でやり直す版）。
-// pos を原点とする局所ENU(メートル)へ投影してから計算するので、ARと同じ投影・最近点の考え方になる。
-export function routeGuidance(coords, pos, aheadM = 25) {
+// 経路(GeoJSON LineStringの coords: [[lng,lat],…])上での pos の状態をまとめて返す。
+// 最近点・道なり look-ahead・残距離に加え、経路からの外れ具合(offRouteM)・経路へ戻る方位
+// (returnBearing)・最近点の緯度経度(nearestLatLng)も返す。Street View の道順案内・2D地図補助・
+// 経路外れ判定で共有する。pos を原点とする局所ENU(メートル)へ投影して計算（ARと同じ投影）。
+// 返り値:
+//   nearestLatLng:{lat,lng} 経路上で pos に最も近い点
+//   offRouteM:    number    pos→最近点の距離(m)（経路からどれだけ外れているか）
+//   brg:          number    道なり look-ahead 点への方位(真北0・時計回り)
+//   distAhead:    number    look-ahead 点までの距離(m)
+//   remainingM:   number    最近点→経路終点の残距離(m)
+//   returnBearing:number    pos→最近点（経路へ戻る方向）の方位(真北0)
+export function routePositionInfo(coords, pos, aheadM = 25) {
   if (!Array.isArray(coords) || coords.length < 2 || !pos) return null;
   const pts = coords.map(([lng, lat]) => toEastNorth(lat, lng, pos.lat, pos.lng)); // {east,north}
   // pos(=原点)に最も近い経路上の点（線分への射影）を探す
@@ -111,7 +118,19 @@ export function routeGuidance(coords, pos, aheadM = 25) {
   }
   // 原点(pos)から look-ahead 点への方位(真北0・時計回り・東+)と距離
   const brg = (Math.atan2(tx, ty) * 180 / Math.PI + 360) % 360;
-  return { brg, distAhead: Math.hypot(tx, ty), remainingM };
+  const offRouteM = Math.hypot(nx, ny);                              // pos→最近点（=原点からの距離）
+  const returnBearing = (Math.atan2(nx, ny) * 180 / Math.PI + 360) % 360; // pos→最近点へ向かう方位
+  return {
+    nearestLatLng: fromEastNorth(nx, ny, pos.lat, pos.lng),
+    offRouteM, brg, distAhead: Math.hypot(tx, ty), remainingM, returnBearing,
+  };
+}
+
+// 「次にどっちへ歩くか」だけが要る既存呼び出し向けの薄いラッパ（後方互換）。
+// 中身は routePositionInfo に一本化し、{ brg, distAhead, remainingM } の従来形だけ返す。
+export function routeGuidance(coords, pos, aheadM = 25) {
+  const info = routePositionInfo(coords, pos, aheadM);
+  return info ? { brg: info.brg, distAhead: info.distAhead, remainingM: info.remainingM } : null;
 }
 
 // 起点(lat,lng)から方位bearing(度)・距離d(m)だけ進んだ地点
