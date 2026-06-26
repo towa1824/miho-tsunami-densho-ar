@@ -373,6 +373,7 @@ export function streetviewOverlayHtml(f, dir, t, route = null, expanded = false)
     ${fcv ? `<div class="navRow">📍 ${esc(fcv)}</div>` : ""}
     ${dir ? `<div class="navRow">現在地から避難施設の方向: <b>${esc(dir.compass)}</b>（北から${dir.brg.toFixed(0)}°）・<b>${formatDist(dir.distM)}</b>（直線距離）</div>` : ""}
     ${routeRow}
+    <div class="navRow">🗺 ストリートビューの矢印で経路通りに進めない時は、画面の「🗺 2D地図」ボタンから Google Map で参考経路（現在位置・向き・経路へ戻る方向）を確認できます。</div>
     <div class="why">理由: ${esc(f.why)}</div>
     ${t ? `<div class="caution">📜 近くの伝承・史料: ${esc(t.title)}（約${formatDist(t._dist)}）${tcv ? `・${esc(tcv)}` : ""} — ${esc(TRADITION_NOTE)}</div>` : ""}
     <div class="navSrc">${esc(STREETVIEW_NOTE)}<br>地図・パノラマ © Google。道順案内は参考表示であり正式な徒歩避難経路ではありません${routeSrc}。</div>`;

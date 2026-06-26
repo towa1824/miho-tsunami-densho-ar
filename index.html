@@ -66,6 +66,25 @@
       <div id="svGuide"></div>
       <canvas id="svMiniMap" aria-label="経路ミニマップ"></canvas>
       <div id="svOverlay"></div>
+      <!-- Street View 内の2D地図（Google Maps JavaScript API の google.maps.Map）。避難所モードのみ。
+           矢印で進めない時に「今どこ・経路はどちら・どちらへ戻るか」を2D地図で確認する補助。
+           Google のロゴ・著作権・標準UIは隠さない。経路は参考表示（安全/正式な避難経路ではない）。 -->
+      <button id="svMapBtn" type="button" hidden
+              title="ストリートビューの矢印で進めない時は、2D地図で参考経路を確認できます">🗺 2D地図</button>
+      <div id="svGoogleMapPanel" class="svGoogleMapPanel" hidden>
+        <div class="svgmBar">
+          <span class="svgmTitle">🗺 Google Mapで参考経路</span>
+          <span id="svgmRouteMode" class="svgmMode"></span>
+          <button id="svGoogleMapExpand" type="button" class="svgmBtn" aria-label="拡大／縮小" title="拡大／縮小">⤢</button>
+          <button id="svGoogleMapClose" type="button" class="svgmBtn" aria-label="閉じる" title="閉じる">✕</button>
+        </div>
+        <div id="svGoogleMap" class="svGoogleMap"></div>
+        <div id="svGoogleMapNote" class="svGoogleMapNote">
+          🔵 ストリートビュー現在位置（矢印=見ている向き）／🔴 避難施設／太線=参考経路。
+          ストリートビューの矢印で経路通りに進めない時も、この2D地図で参考経路を確認できます。
+          経路は<b>参考表示</b>であり正式な徒歩避難経路ではありません。実際の避難は自治体・気象庁等の公式情報に従ってください。
+        </div>
+      </div>
       <div id="svMessage" hidden></div>
       <button id="svExit" type="button">✕ 終了</button>
     </div>
