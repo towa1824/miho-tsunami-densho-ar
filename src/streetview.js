@@ -124,14 +124,18 @@ export function onPanoramaUpdate(cb) {
   panorama.addListener("pov_changed", cb);
 }
 
-// 避難先（目的地）の緯度経度にマーカー＋名前ラベルを置く。Googleが地理座標をパノラマへ3D投影するので、
-// 見回し/前進してもその建物の方向に固定表示され、「どの建物が避難先か」を直接示せる。
-//   position: { lat, lng } 施設座標（推定の場合は呼び出し側で title/labelHtml に「おおよその位置」を併記）
+// 地点（避難先 or 伝承の代表地点）の緯度経度にマーカー＋名前ラベルを置く。Googleが地理座標をパノラマへ
+// 3D投影するので、見回し/前進してもその方向に固定表示され、「どこの地点か」を直接示せる。
+// 避難所SV（赤ピン）でも伝承SV（オレンジ円）でも共有する（伝承モードは icon で色を変えて区別）。
+//   position: { lat, lng } 地点座標（推定/代表点の場合は呼び出し側で title/labelHtml に注記を併記）
 //   title:    マーカーのツールチップ（プレーンテキスト）／ labelHtml: 名前ラベル(InfoWindow)のHTML（呼び出し側でエスケープ）
-export function setFacilityMarker(maps, { position, title = "", labelHtml = "" } = {}) {
+//   icon:     任意。Google Maps の icon 指定（未指定なら既定の赤ピン）。伝承の代表点はオレンジ円を渡す。
+export function setFacilityMarker(maps, { position, title = "", labelHtml = "", icon = null } = {}) {
   clearFacilityMarker();
   if (!panorama || !position) return;
-  facilityMarker = new maps.Marker({ position, map: panorama, title }); // 既定の赤ピン（建物方向に出る）
+  const markerOpts = { position, map: panorama, title }; // icon 未指定なら既定の赤ピン（建物方向に出る）
+  if (icon) markerOpts.icon = icon;
+  facilityMarker = new maps.Marker(markerOpts);
   if (labelHtml) {
     // disableAutoPan: ラベル表示でPOVを勝手に動かさない。Googleのロゴ・下部コントロールは覆わない。
     facilityInfo = new maps.InfoWindow({ content: labelHtml, disableAutoPan: true });

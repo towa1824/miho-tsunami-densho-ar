@@ -7,7 +7,7 @@ import * as SV from "./streetview.js";
 import { initMiniMap, drawMiniMap } from "./minimap.js";
 import {
   renderFacilitiesTab, renderTraditionsTab, renderArTab, renderAboutTab,
-  arOverlayHtml, learnOverlayHtml, streetviewOverlayHtml,
+  arOverlayHtml, learnOverlayHtml, streetviewOverlayHtml, traditionStreetviewOverlayHtml,
 } from "./ui.js";
 import { distanceM, bearingDeg, destPoint, compassLabel, travelTimeMin, formatDuration, formatDist, routeGuidance, TRAVEL_LABEL } from "./geo.js";
 
@@ -30,6 +30,10 @@ const state = {
   // 既存の arMode("sim"/"live") は一切変えない。
   streetviewFacility: null,
   svRoute: null,        // Street View用に確保した現在地→避難施設の道路経路 { mode, geometry, distM, durS, travelMode }
+  // 共有の #streetView を「避難所の道順案内(facility)」と「伝承の実写学習(tradition)」で使い分ける。
+  // facility と tradition を取り違えない（道順HUDは facility のみ・tradition では出さない）。
+  svMode: null,             // "facility" | "tradition" | null
+  streetviewTradition: null, // 伝承SVで表示中の伝承（avoid: facility と兼用しない）
 };
 let svExpanded = false; // ストリートビューの下部カードの展開状態
 let arStatusMsg = "";
@@ -95,6 +99,7 @@ const handlers = {
   onSetArMode: (m) => { state.arMode = m; if (state.tab === "ar") renderActiveTab(); },
   onLearnTradition: (id) => startLearnAR(traditionById(id)),
   onStreetView: (id) => openStreetView(facilityById(id)),
+  onTraditionStreetView: (id) => openTraditionStreetView(traditionById(id)),
 };
 
 // ---- 現在地 ----
@@ -544,6 +549,7 @@ function renderSvOverlay(facility) {
 // position_changed / pov_changed で呼ばれる（Googleの矢印で歩く・見回すと発火）。
 const SV_NEAR_M = 60; // これより近い／経路が無い時は避難先そのものを指す
 function updateSvGuidance() {
+  if (state.svMode !== "facility") return; // 道順ガイドは避難所モードのみ（伝承モードでは出さない）
   const f = state.streetviewFacility;
   if (!f) return;
   const panoPos = SV.getPanoramaPosition();
@@ -597,10 +603,18 @@ function scheduleSvGuidance() {
 // パノラマ領域に重ねるメッセージ（読込中スピナー／未設定・未提供・失敗の案内）。
 // 文言はすべて固定文字列なのでエスケープ不要。spinner時はボタンを出さない。
 function showSvMessage(title, desc, { spinner = false } = {}) {
-  const f = state.streetviewFacility;
+  // フォールバック導線はモードで切替: facility=避難所の現地目線ビュー(3D)、tradition=伝承の合成3D学習。
+  let fallbackBtn = "";
+  if (!spinner) {
+    if (state.svMode === "tradition" && state.streetviewTradition) {
+      fallbackBtn = `<button id="svToLearn" type="button" class="primary">🏙 3D（OSM）で深く学ぶ</button>`;
+    } else if (state.streetviewFacility) {
+      fallbackBtn = `<button id="svToSim" type="button" class="primary">🧭 現地目線ビュー（OSM）を開く</button>`;
+    }
+  }
   const buttons = spinner ? "" : `
     <div class="svMsgBtns">
-      ${f ? `<button id="svToSim" type="button" class="primary">🧭 現地目線ビュー（OSM）を開く</button>` : ""}
+      ${fallbackBtn}
       <button id="svMsgClose" type="button">✕ 閉じる</button>
     </div>`;
   el.svMessage.innerHTML = `
@@ -617,6 +631,11 @@ function showSvMessage(title, desc, { spinner = false } = {}) {
     closeStreetView();
     if (fac) { state.arMode = "sim"; switchTab("ar"); startAR(fac); } // 既存のOSM現地目線ビューへフォールバック
   });
+  el.svMessage.querySelector("#svToLearn")?.addEventListener("click", () => {
+    const tr = state.streetviewTradition;
+    closeStreetView();
+    if (tr) startLearnAR(tr); // 既存の合成3D学習ビューへフォールバック
+  });
 }
 
 function hideSvMessage() {
@@ -626,6 +645,8 @@ function hideSvMessage() {
 
 async function openStreetView(facility) {
   if (!facility || facility.lat == null) return; // 座標の無い施設はStreet View対象外
+  state.svMode = "facility";
+  state.streetviewTradition = null; // 伝承モードと取り違えない
   state.selected = facility;
   state.streetviewFacility = facility;
   state.svRoute = null;
@@ -635,6 +656,7 @@ async function openStreetView(facility) {
   el.svGuide.textContent = "";
   el.svGuide.classList.remove("aligned");
   el.svArrow.hidden = true;
+  el.svMiniMap.hidden = false; // 避難所の道順案内では経路ミニマップを出す（伝承SVで隠した状態から戻す）
   renderSvOverlay(facility); // 施設名・種別・理由・方向・伝承・注意文は最初から読める
 
   if (!SV.hasApiKey()) {
@@ -716,6 +738,87 @@ async function openStreetView(facility) {
   }
 }
 
+// ---- Googleストリートビュー（伝承学習モード・案B）----
+// 「ARで深く学ぶ」(合成3D=startLearnAR)はそのまま。これは伝承カードの別ボタンから開く追加ビューで、
+// 伝承スポットの実写パノラマを背景に解説を読む。避難ナビではないので道順ガイド
+// （#svGuide / #svArrow / 経路ミニマップ / 経路取得）は出さない（facilityモードのみ動かす）。
+// キー未設定・パノラマ未提供・失敗時は #svMessage で案内し、合成3D学習(startLearnAR)へフォールバックする。
+function renderTraditionSvOverlay(t) {
+  el.svOverlay.innerHTML = traditionStreetviewOverlayHtml(t, svExpanded);
+}
+
+async function openTraditionStreetView(t) {
+  if (!t || t.lat == null) return; // 座標の無い伝承はSV対象外（合成3Dも開けない）
+  state.svMode = "tradition";
+  state.streetviewTradition = t;
+  state.streetviewFacility = null;  // facilityモードと取り違えない
+  state.svRoute = null;
+  svExpanded = false;
+  el.streetView.hidden = false;
+  el.svPano.innerHTML = "";
+  // 道順HUDは伝承モードでは一切出さない（学習であってナビではない）
+  el.svGuide.textContent = "";
+  el.svGuide.classList.remove("aligned");
+  el.svArrow.hidden = true;
+  el.svMiniMap.hidden = true;       // 経路ミニマップも出さない（地点中心の参考も省く）
+  renderTraditionSvOverlay(t);      // 解説カード（出典・注意文）は最初から開閉して読める
+
+  if (!SV.hasApiKey()) {
+    showSvMessage("Google Street View APIキーが未設定です。",
+      "「🏙 3D（OSM）で深く学ぶ」では同じ伝承スポットを合成3Dで学べます。");
+    return;
+  }
+  showSvMessage("Googleストリートビューを読み込み中…", "", { spinner: true });
+
+  let maps;
+  try {
+    maps = await SV.loadGoogleMaps();
+  } catch {
+    showSvMessage("Googleストリートビューを読み込めませんでした。",
+      "ネットワークまたはAPIキー設定をご確認ください。「🏙 3D（OSM）で深く学ぶ」をご利用ください。");
+    return;
+  }
+  if (state.streetviewTradition !== t) return; // 読込中に閉じた/別スポットへ切替えた
+
+  let found = null;
+  try {
+    found = await SV.findPanorama(maps, t.lat, t.lng); // 伝承スポット付近のパノラマを探す
+  } catch {
+    found = null;
+  }
+  if (state.streetviewTradition !== t) return;
+  if (!found) {
+    showSvMessage("この伝承スポット周辺のGoogleストリートビューが見つかりませんでした。",
+      "「🏙 3D（OSM）で深く学ぶ」なら同じ場所を3Dで確認できます。");
+    return;
+  }
+  try {
+    const panoPos = { lat: found.location.latLng.lat(), lng: found.location.latLng.lng() };
+    // 初期方位は伝承スポット方向（最初からスポット側を向く）
+    const heading = bearingDeg(panoPos.lat, panoPos.lng, t.lat, t.lng);
+    hideSvMessage();
+    SV.initPanorama(maps, el.svPano, {
+      location: found.location.latLng, pano: found.location.pano, heading,
+    });
+    // 伝承の代表地点を「伝承色＝オレンジ」の円マーカー＋ラベルで固定表示（避難所の赤ピンと区別）。
+    // 代表点/面・線・推定は coordCaveat で必ず併記し、パノラマ地点＝実地点と断定しない（CLAUDE.md）。
+    const cav = coordCaveat(t);
+    const sub = cav ? `・${cav}` : "";
+    SV.setFacilityMarker(maps, {
+      position: { lat: t.lat, lng: t.lng },
+      icon: { path: maps.SymbolPath.CIRCLE, scale: 9, fillColor: "#ef6c00", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+      title: `伝承の代表地点（参考）: ${t.title}${sub}`,
+      labelHtml:
+        `<div style="font:700 12px sans-serif;color:#7a3b00">📜 伝承の代表地点（参考）: ${escHtml(t.title)}</div>` +
+        `<div style="font:11px sans-serif;color:#41505b">${escHtml(t.disaster ?? "")}${cav ? `・${escHtml(cav)}` : ""}</div>`,
+    });
+    // 伝承モードは道順ガイドを購読しない（onPanoramaUpdate/updateSvGuidanceを呼ばない＝HUDなし）。
+  } catch {
+    showSvMessage("Googleストリートビューの表示中に問題が発生しました。",
+      "「🏙 3D（OSM）で深く学ぶ」をご利用ください。");
+  }
+}
+
 function closeStreetView() {
   if (svGuideRaf) { cancelAnimationFrame(svGuideRaf); svGuideRaf = 0; }
   SV.destroyPanorama();
@@ -724,8 +827,11 @@ function closeStreetView() {
   el.svGuide.textContent = "";
   el.svGuide.classList.remove("aligned");
   el.svArrow.hidden = true;
+  el.svMiniMap.hidden = false; // 次の避難所SV（道順案内）のために戻す
   hideSvMessage();
   state.streetviewFacility = null;
+  state.streetviewTradition = null;
+  state.svMode = null;
   state.svRoute = null;
   svExpanded = false;
 }
@@ -766,7 +872,9 @@ function init() {
   el.svOverlay.addEventListener("click", (e) => {
     if (e.target.closest('[data-act="toggleSv"]')) {
       svExpanded = !svExpanded;
-      if (state.streetviewFacility) renderSvOverlay(state.streetviewFacility);
+      // モードに応じて該当オーバーレイだけ再生成（facility と tradition を取り違えない）
+      if (state.svMode === "tradition" && state.streetviewTradition) renderTraditionSvOverlay(state.streetviewTradition);
+      else if (state.streetviewFacility) renderSvOverlay(state.streetviewFacility);
     }
   });
   setupDpad();
