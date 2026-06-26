@@ -88,6 +88,7 @@ const el = {
   svGoogleMapExpand: document.getElementById("svGoogleMapExpand"),
   svGoogleMapClose: document.getElementById("svGoogleMapClose"),
   svgmRouteMode: document.getElementById("svgmRouteMode"),
+  svgmType: document.getElementById("svgmType"),
 };
 
 // ミニマップは現地目線ビューとStreet Viewで別canvas（同時には開かない）。それぞれ独立インスタンス。
@@ -670,6 +671,7 @@ function openSvMap() {
   const panoPos = SV.getPanoramaPosition();
   const center = panoPos ?? { lat: f0().lat, lng: f0().lng };
   SVMap.initStreetViewMap(gmaps, el.svGoogleMap, { center });
+  syncSvMapTypeBtn();   // 前回の地図/空撮の選択を引き継いでボタン表示を合わせる
   updateSvMapPanel();
 }
 // パネルの中心初期値に使う施設（null安全のための小ヘルパ）
@@ -695,6 +697,19 @@ function toggleSvMapExpand() {
   if (el.svGoogleMapExpand) el.svGoogleMapExpand.textContent = svMapExpanded ? "⤡ 縮小" : "⤢";
   SVMap.resizeStreetViewMap();
   updateSvMapPanel();
+}
+
+// 地図 ⇄ 空撮(航空写真) トグル。ボタンは「次に切り替わる方」を示す（空撮中は🗺、地図中は🛰）。
+function syncSvMapTypeBtn() {
+  if (!el.svgmType) return;
+  const aerial = SVMap.getStreetViewMapType() === "hybrid";
+  el.svgmType.textContent = aerial ? "🗺" : "🛰";
+  el.svgmType.title = aerial ? "地図に切替" : "空撮（航空写真）に切替";
+}
+function toggleSvMapType() {
+  const next = SVMap.getStreetViewMapType() === "hybrid" ? "roadmap" : "hybrid";
+  SVMap.setStreetViewMapType(next);
+  syncSvMapTypeBtn();
 }
 
 // パノラマ領域に重ねるメッセージ（読込中スピナー／未設定・未提供・失敗の案内）。
@@ -994,9 +1009,10 @@ function init() {
       else if (state.streetviewFacility) renderSvOverlay(state.streetviewFacility);
     }
   });
-  // Street View 内の2D Google Map: 開く／拡大・縮小／閉じる
+  // Street View 内の2D Google Map: 開く／拡大・縮小／地図⇄空撮／閉じる
   el.svMapBtn.addEventListener("click", openSvMap);
   el.svGoogleMapExpand.addEventListener("click", toggleSvMapExpand);
+  el.svgmType.addEventListener("click", toggleSvMapType);
   el.svGoogleMapClose.addEventListener("click", closeSvMap);
   setupDpad();
   setupSheet();

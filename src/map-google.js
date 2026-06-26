@@ -118,7 +118,14 @@ function build(el) {
   const bounds = new maps.LatLngBounds();
   gmap = new maps.Map(el, {
     center: { lat: 34.99, lng: 138.52 }, zoom: 14,
-    mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+    // 地図 ⇄ 空撮(航空写真) 切替を有効化（hybrid=衛星画像＋地名ラベルで避難時に位置が分かりやすい）。
+    mapTypeControl: true,
+    mapTypeControlOptions: {
+      mapTypeIds: ["roadmap", "hybrid"],
+      style: maps.MapTypeControlStyle.HORIZONTAL_BAR,
+      position: maps.ControlPosition.TOP_LEFT,
+    },
+    streetViewControl: false, fullscreenControl: false,
     clickableIcons: false, gestureHandling: "greedy",
     // ズーム等の標準UI・Google のロゴ・著作権/帰属は残す（消さない）。
   });

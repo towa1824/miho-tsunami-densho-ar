@@ -515,8 +515,9 @@ body.sheet-collapsed #panel { padding-top: 0; padding-bottom: 0; overflow: hidde
   background: #f7f9fb; max-height: 30%; overflow-y: auto;
 }
 .svGoogleMapNote b { color: #b34700; }
-/* 小サイズではタイトルと注意文を畳んで地図を広く使う（拡大時に全文表示） */
+/* 小サイズではタイトル・経路ラベル・注意文を畳んでボタンと地図にスペースを割く（拡大時に全文表示） */
 .svGoogleMapPanel:not(.expanded) .svgmTitle,
+.svGoogleMapPanel:not(.expanded) .svgmMode,
 .svGoogleMapPanel:not(.expanded) .svGoogleMapNote { display: none; }
 
 .leaflet-popup-content { font-size: 12px; line-height: 1.4; margin: 10px 12px; }

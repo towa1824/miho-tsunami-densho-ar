@@ -74,6 +74,8 @@ Google Maps Platform の API キーを設定すると、次の機能が有効に
 
 1. **メイン地図が Google Maps になる**: 画面メインの地図が **Maps JavaScript API の `google.maps.Map`** になる
    （未設定時は従来どおり Leaflet + OpenStreetMap。Google の読込に失敗した場合も自動で Leaflet+OSM へフォールバック）。
+   **地図 ⇄ 空撮（航空写真）モード**を切り替え可能（Google=航空写真/hybrid、未設定時の Leaflet=Esri World Imagery 衛星画像〔無料・要帰属〕）。
+   ストリートビュー内の2D地図も「🛰」ボタンで地図/空撮を切り替えられる。
 2. **Googleストリートビュー**: 避難施設カード・「現地目線」タブの
    **「📷 Googleストリートビューで周辺を見る」** から、選択した避難先の周辺を Street View で確認できる
    （Maps JavaScript API の Street View Panorama を使用）。

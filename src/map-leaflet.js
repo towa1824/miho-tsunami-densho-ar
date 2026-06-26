@@ -89,10 +89,17 @@ function makeMarker(r, popupHtml) {
 
 export function initMap(el) {
   map = L.map(el, { zoomControl: true });
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  // 地図(OSM) と 空撮(Esri World Imagery=無料・APIキー不要・要帰属) を切り替えられるようにする
+  // （キー無しでも空撮モードを使えるようにするため。© は各レイヤの attribution で表示）。
+  const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap contributors",
   }).addTo(map);
+  const esri = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 19, attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" }
+  );
+  L.control.layers({ "🗺 地図": osm, "🛰 空撮": esri }, null, { position: "topleft" }).addTo(map);
 
   const bounds = [];
   for (const f of facilities) {
