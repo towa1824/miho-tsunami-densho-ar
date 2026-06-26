@@ -1,33 +1,33 @@
-// AR画面右上のミニマップ（Canvas・自分中心・北上固定）。
+// AR/Street View 画面のミニマップ（Canvas・自分中心・北上固定）。
 // 施設(種別色)・伝承(橙/発見済みは金の星)・目的地(赤)・道筋(青破線)・視野の扇形を描く。
 // タップでサイズ切替。Street View のミニマップに相当する現在地の手がかり。
+// 現地目線ビューとStreet Viewは別々のcanvasに同時には開かないが、それぞれ独立したインスタンスを
+// 持てるよう initMiniMap はインスタンスを返す（モジュール共有の状態に依存しない）。
 import {
   facilities, traditions, hasPos, categoryOf, CATEGORY_COLORS,
 } from "./data.js";
 import { toEastNorth, distanceM } from "./geo.js";
 
-let canvas, ctx;
-let size = 132;
-let expanded = false;
-
+// canvas要素ごとに独立したミニマップ。返り値を drawMiniMap の第1引数へ渡す。
 export function initMiniMap(el) {
-  canvas = el;
-  ctx = canvas.getContext("2d");
-  applySize();
-  canvas.addEventListener("click", () => { expanded = !expanded; applySize(); });
+  const inst = { canvas: el, ctx: el.getContext("2d"), size: 132, expanded: false };
+  applySize(inst);
+  el.addEventListener("click", () => { inst.expanded = !inst.expanded; applySize(inst); });
+  return inst;
 }
 
-function applySize() {
-  size = expanded ? 248 : 132;
-  canvas.width = size * 2;   // Retina
-  canvas.height = size * 2;
-  canvas.style.width = `${size}px`;
-  canvas.style.height = `${size}px`;
-  ctx.setTransform(2, 0, 0, 2, 0, 0);
+function applySize(inst) {
+  inst.size = inst.expanded ? 248 : 132;
+  inst.canvas.width = inst.size * 2;   // Retina
+  inst.canvas.height = inst.size * 2;
+  inst.canvas.style.width = `${inst.size}px`;
+  inst.canvas.style.height = `${inst.size}px`;
+  inst.ctx.setTransform(2, 0, 0, 2, 0, 0);
 }
 
-export function drawMiniMap(pos, headingDeg, target, routeGeometry, discoveredSet) {
-  if (!ctx || !pos) return;
+export function drawMiniMap(inst, pos, headingDeg, target, routeGeometry, discoveredSet) {
+  if (!inst || !inst.ctx || !pos) return;
+  const ctx = inst.ctx, size = inst.size;
   const R = size / 2;
   // 表示範囲: 目的地が収まるよう自動調整
   let range = 300;
@@ -93,7 +93,7 @@ export function drawMiniMap(pos, headingDeg, target, routeGeometry, discoveredSe
     if (!inside(x, y)) continue;
     const found = discoveredSet?.has(t.id);
     ctx.fillStyle = found ? "#ffd54f" : CATEGORY_COLORS.tradition;
-    star(x, y, found ? 6 : 4.2);
+    star(ctx, x, y, found ? 6 : 4.2);
   }
 
   // 目的地（赤・白縁）
@@ -125,7 +125,7 @@ export function drawMiniMap(pos, headingDeg, target, routeGeometry, discoveredSe
   ctx.fillText(`半径${Math.round(range)}m`, R, size - 5);
 }
 
-function star(x, y, r) {
+function star(ctx, x, y, r) {
   ctx.beginPath();
   for (let i = 0; i < 5; i++) {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;

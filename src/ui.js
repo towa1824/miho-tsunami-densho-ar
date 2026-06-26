@@ -332,9 +332,10 @@ export function learnOverlayHtml(t) {
 }
 
 // ストリートビュー画面の下部オーバーレイ（折りたたみ式）。パノラマ上に施設情報・方向・伝承・注意文を残す。
-//   dir: { compass, brg, distM } 現在地→避難施設の方向・距離（現在地が無ければ null）
-//   t:   近くの伝承・史料（無ければ null）
-export function streetviewOverlayHtml(f, dir, t, expanded = false) {
+//   dir:   { compass, brg, distM } 現在地→避難施設の方向・直線距離（現在地が無ければ null）
+//   t:     近くの伝承・史料（無ければ null）
+//   route: { mode, distM, durS, travelMode } 現在地→避難施設の道路経路（取得できた時のみ。無ければ null）
+export function streetviewOverlayHtml(f, dir, t, route = null, expanded = false) {
   const heightLine = f.evacuation_height_m != null
     ? `避難可能高さ ${esc(f.evacuation_height_m)}m ／ ${esc(f.evacuation_place ?? "")}`
     : `避難可能場所: ${esc(f.evacuation_place ?? "")}`;
@@ -342,14 +343,25 @@ export function streetviewOverlayHtml(f, dir, t, expanded = false) {
   const head = `📷 ${esc(f.name)}${dirShort ? `　${dirShort}` : ""}`;
   const fcv = coordCaveat(f);            // 施設座標が推定の場合の「おおよその位置」注記（confidence由来）
   const tcv = t ? coordCaveat(t) : null; // 伝承の代表点/面情報の注記（location_kind由来）
+  // 道路経路（道順）の合計距離・所要時間。道なりの「次にどっちへ」は上部の #svGuide が出すので、ここは総量。
+  const rMin = route?.durS != null ? Math.max(1, Math.round(route.durS / 60)) : null;
+  const rVia = route?.mode === "google" ? "Google経路・参考"
+    : route?.mode === "osrm" ? "OSM道路経路・参考"
+      : route?.mode === "straight" ? "直線参考（道路経路なし）" : "";
+  const routeRow = route
+    ? `<div class="navRow">道順: ${route.distM != null ? `道路約${formatDist(route.distM)}` : "直線参考"}${rMin != null ? `・${esc(TRAVEL_LABEL[route.travelMode] ?? "徒歩")}約${esc(formatDuration(rMin))}` : ""}（${esc(rVia)}）</div>`
+    : "";
+  const routeSrc = route?.mode === "google" ? "／経路: Google Routes（参考）"
+    : route?.mode === "osrm" ? "／経路: OpenStreetMap・OSRM（参考）" : "";
   const body = `
     <div class="navRow">種別: ${esc(f.type)}${f.subtype ? `（${esc(f.subtype)}）` : ""}</div>
     <div class="navRow">${heightLine}</div>
     ${fcv ? `<div class="navRow">📍 ${esc(fcv)}</div>` : ""}
     ${dir ? `<div class="navRow">現在地から避難施設の方向: <b>${esc(dir.compass)}</b>（北から${dir.brg.toFixed(0)}°）・<b>${formatDist(dir.distM)}</b>（直線距離）</div>` : ""}
+    ${routeRow}
     <div class="why">理由: ${esc(f.why)}</div>
     ${t ? `<div class="caution">📜 近くの伝承・史料: ${esc(t.title)}（約${formatDist(t._dist)}）${tcv ? `・${esc(tcv)}` : ""} — ${esc(TRADITION_NOTE)}</div>` : ""}
-    <div class="navSrc">${esc(STREETVIEW_NOTE)}<br>地図・パノラマ © Google。表示は参考であり正式な徒歩避難経路ではありません。</div>`;
+    <div class="navSrc">${esc(STREETVIEW_NOTE)}<br>地図・パノラマ © Google。道順案内は参考表示であり正式な徒歩避難経路ではありません${routeSrc}。</div>`;
   return `<div class="svCard${expanded ? " expanded" : ""}">
     <button class="svToggle" type="button" data-act="toggleSv">
       <span class="navHead">${head}</span><span class="navChev">${expanded ? "▾" : "▸"}</span>

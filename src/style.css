@@ -348,11 +348,46 @@ body.sheet-collapsed #panel { padding-top: 0; padding-bottom: 0; overflow: hidde
 #streetView[hidden] { display: none; }
 #svPano { position: absolute; inset: 0; }
 
+/* 情報カードは道順ピル(#svGuide)の下に置き、右はミニマップ(右上)を避ける幅にする */
 #svOverlay {
-  position: absolute; left: 8px; right: 60px; top: 8px; z-index: 510;
+  position: absolute; left: 8px; right: 148px; top: 46px; z-index: 510;
   pointer-events: none;
 }
 #svOverlay > * { pointer-events: auto; }
+
+/* 道順ガイド: 「見ている向きから 右へ◯° / ✓ この向き・約Nm（のこり…）」を上部のピルに出す。
+   POVが変わるたびJSが文字だけ書き換える（カードは別なので読書中のスクロールを邪魔しない）。 */
+#svGuide {
+  position: absolute; top: 8px; left: 8px; right: 148px; z-index: 516;
+  background: rgba(13,43,69,.88); color: #fff; font-size: 12.5px; font-weight: 700;
+  padding: 6px 12px; border-radius: 16px; line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  box-shadow: 0 1px 6px rgba(0,0,0,.4);
+}
+#svGuide:empty { display: none; }
+#svGuide b { color: #ffd54f; }
+#svGuide.aligned { background: rgba(27,94,32,.92); }   /* 進行方向と向きが合っている時は緑 */
+
+/* 経路つきミニマップ（右上・終了ボタンの下）。タップでサイズ切替（minimap.js） */
+#svMiniMap {
+  position: absolute; top: 52px; right: 8px; z-index: 515;
+  border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,.45);
+}
+
+/* 進行方向の矢印（画面中央やや上）。POV基準で (経路方位−POV) だけ回転して「こっちへ進む」を示す。
+   pointer-events:none で下のパノラマ操作・Google矢印を邪魔しない。 */
+#svArrow {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+  z-index: 512; pointer-events: none;
+  width: 96px; height: 96px; display: flex; align-items: center; justify-content: center;
+}
+#svArrow[hidden] { display: none; }
+#svArrowInner {
+  font-size: 86px; line-height: 1; color: rgba(26,115,232,.82);
+  text-shadow: 0 2px 8px rgba(0,0,0,.55); transition: transform .15s ease;
+  will-change: transform;
+}
+#svArrow.aligned #svArrowInner { color: rgba(46,160,67,.92); }
 #svExit {
   position: absolute; right: 8px; top: 8px; z-index: 530;
   background: rgba(255,255,255,.95); border: 1px solid #888; border-radius: 18px;

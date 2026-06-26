@@ -90,8 +90,10 @@ export function initPanorama(maps, host, { location, pano = null, heading = 0 } 
     motionTracking: false,
     motionTrackingControl: false,
     showRoadLabels: true,        // 道路名は Google 由来の文脈情報として残す
-    linksControl: true,          // 矢印で道沿いに移動できる
-    panControl: true,
+    linksControl: true,          // 矢印で道沿いに移動できる（道順を歩く中核なので残す）
+    // パン(コンパス)コントロールは既定で左上に出て道順ピル(#svGuide)と重なる。向きはミニマップのN表示と
+    // 道順ピルで分かるため非表示にし、左上を空ける（ドラッグでの見回しは従来どおり可能）。
+    panControl: false,
     zoomControl: true,
     // ※ Google のロゴ・著作権表記は widget が自動表示する。消さない（利用規約・帰属表示の維持）。
   });
@@ -99,10 +101,33 @@ export function initPanorama(maps, host, { location, pano = null, heading = 0 } 
   return panorama;
 }
 
+// 現在のパノラマ位置（{lat,lng}）。道順ガイドの「現在地」として使う（Google矢印で前進すると変わる）。
+export function getPanoramaPosition() {
+  const p = panorama?.getPosition?.();
+  return p ? { lat: p.lat(), lng: p.lng() } : null;
+}
+
+// 現在のPOVの向き（0=北・時計回り）。Street View には端末方位が無いので、これを「見ている向き」として使う。
+export function getPanoramaHeading() {
+  const pov = panorama?.getPov?.();           // 生成途中は undefined になりうる
+  return typeof pov?.heading === "number" ? pov.heading : null;
+}
+
+// パノラマの位置・向きが変わるたびに cb を呼ぶ。
+//   position_changed: Googleの矢印で道沿いに前進した時／pov_changed: 見回した時。
+// 道順ガイド（次の方向・矢印・ミニマップ）を「見ている向き」基準で更新するために購読する。
+export function onPanoramaUpdate(cb) {
+  if (!panorama || !window.google?.maps) return;
+  panorama.addListener("position_changed", cb);
+  panorama.addListener("pov_changed", cb);
+}
+
 // パノラマを破棄して DOM をクリーンにする（戻る/終了時）。Google に明示的な destroy は無いので、
 // 参照を切り、host の中身（widget が生成した DOM）を空にして GC に委ねる。
 export function destroyPanorama() {
   if (panorama) {
+    // onPanoramaUpdate で付けたリスナを外す（古いパノラマ・古いコールバックを残さない）
+    try { window.google?.maps?.event?.clearInstanceListeners(panorama); } catch { /* 生成途中など */ }
     try { panorama.setVisible(false); } catch { /* 生成途中など */ }
   }
   panorama = null;

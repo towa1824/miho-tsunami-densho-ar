@@ -75,6 +75,45 @@ export function fromEastNorth(east, north, lat0, lng0) {
   };
 }
 
+// 道路経路(GeoJSON LineStringの coords: [[lng,lat],…])上で、現在地posに最も近い点から
+// 道なりに aheadM[m] 先の点を求め、その点への方位(真北基準)・距離、経路の残距離を返す。
+// Street View の「次にどっちへ歩くか」算出に使う（AR の routeProgress を lat/lng でやり直す版）。
+// pos を原点とする局所ENU(メートル)へ投影してから計算するので、ARと同じ投影・最近点の考え方になる。
+export function routeGuidance(coords, pos, aheadM = 25) {
+  if (!Array.isArray(coords) || coords.length < 2 || !pos) return null;
+  const pts = coords.map(([lng, lat]) => toEastNorth(lat, lng, pos.lat, pos.lng)); // {east,north}
+  // pos(=原点)に最も近い経路上の点（線分への射影）を探す
+  let bestD = Infinity, bestI = 1, bestT = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const dx = b.east - a.east, dy = b.north - a.north, len2 = dx * dx + dy * dy || 1e-9;
+    let t = ((0 - a.east) * dx + (0 - a.north) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.east + dx * t, cy = a.north + dy * t;
+    const d = cx * cx + cy * cy;
+    if (d < bestD) { bestD = d; bestI = i; bestT = t; }
+  }
+  const a0 = pts[bestI - 1], b0 = pts[bestI];
+  const nx = a0.east + (b0.east - a0.east) * bestT;
+  const ny = a0.north + (b0.north - a0.north) * bestT;
+  // 最近点から道なりに aheadM 先の look-ahead 点
+  let remain = aheadM, cx = nx, cy = ny, i = bestI, tx = nx, ty = ny;
+  while (i < pts.length) {
+    const b = pts[i];
+    const dx = b.east - cx, dy = b.north - cy, seg = Math.hypot(dx, dy);
+    if (seg >= remain) { const t = remain / seg; tx = cx + dx * t; ty = cy + dy * t; break; }
+    remain -= seg; cx = b.east; cy = b.north; i++; tx = cx; ty = cy;
+  }
+  // 残距離（最近点→経路終点）
+  let remainingM = Math.hypot(b0.east - nx, b0.north - ny);
+  for (let j = bestI + 1; j < pts.length; j++) {
+    remainingM += Math.hypot(pts[j].east - pts[j - 1].east, pts[j].north - pts[j - 1].north);
+  }
+  // 原点(pos)から look-ahead 点への方位(真北0・時計回り・東+)と距離
+  const brg = (Math.atan2(tx, ty) * 180 / Math.PI + 360) % 360;
+  return { brg, distAhead: Math.hypot(tx, ty), remainingM };
+}
+
 // 起点(lat,lng)から方位bearing(度)・距離d(m)だけ進んだ地点
 export function destPoint(lat, lng, brgDeg, d) {
   const br = (brgDeg * Math.PI) / 180;
