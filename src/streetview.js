@@ -14,6 +14,8 @@
 let loadPromise = null;   // Maps JS API の多重ロードを防ぐ（解決済み Promise を再利用）
 let panorama = null;      // 現在表示中の StreetViewPanorama
 let panoHost = null;      // パノラマを描画している DOM 要素（破棄時に中身を消す）
+let facilityMarker = null; // 避難先（目的地）をパノラマ上に固定表示するマーカー
+let facilityInfo = null;   // 避難先の名前ラベル（InfoWindow）
 
 function apiKey() {
   return import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -90,8 +92,10 @@ export function initPanorama(maps, host, { location, pano = null, heading = 0 } 
     motionTracking: false,
     motionTrackingControl: false,
     showRoadLabels: true,        // 道路名は Google 由来の文脈情報として残す
-    linksControl: true,          // 矢印で道沿いに移動できる
-    panControl: true,
+    linksControl: true,          // 矢印で道沿いに移動できる（道順を歩く中核なので残す）
+    // パン(コンパス)コントロールは既定で左上に出て道順ピル(#svGuide)と重なる。向きはミニマップのN表示と
+    // 道順ピルで分かるため非表示にし、左上を空ける（ドラッグでの見回しは従来どおり可能）。
+    panControl: false,
     zoomControl: true,
     // ※ Google のロゴ・著作権表記は widget が自動表示する。消さない（利用規約・帰属表示の維持）。
   });
@@ -99,10 +103,55 @@ export function initPanorama(maps, host, { location, pano = null, heading = 0 } 
   return panorama;
 }
 
+// 現在のパノラマ位置（{lat,lng}）。道順ガイドの「現在地」として使う（Google矢印で前進すると変わる）。
+export function getPanoramaPosition() {
+  const p = panorama?.getPosition?.();
+  return p ? { lat: p.lat(), lng: p.lng() } : null;
+}
+
+// 現在のPOVの向き（0=北・時計回り）。Street View には端末方位が無いので、これを「見ている向き」として使う。
+export function getPanoramaHeading() {
+  const pov = panorama?.getPov?.();           // 生成途中は undefined になりうる
+  return typeof pov?.heading === "number" ? pov.heading : null;
+}
+
+// パノラマの位置・向きが変わるたびに cb を呼ぶ。
+//   position_changed: Googleの矢印で道沿いに前進した時／pov_changed: 見回した時。
+// 道順ガイド（次の方向・矢印・ミニマップ）を「見ている向き」基準で更新するために購読する。
+export function onPanoramaUpdate(cb) {
+  if (!panorama || !window.google?.maps) return;
+  panorama.addListener("position_changed", cb);
+  panorama.addListener("pov_changed", cb);
+}
+
+// 避難先（目的地）の緯度経度にマーカー＋名前ラベルを置く。Googleが地理座標をパノラマへ3D投影するので、
+// 見回し/前進してもその建物の方向に固定表示され、「どの建物が避難先か」を直接示せる。
+//   position: { lat, lng } 施設座標（推定の場合は呼び出し側で title/labelHtml に「おおよその位置」を併記）
+//   title:    マーカーのツールチップ（プレーンテキスト）／ labelHtml: 名前ラベル(InfoWindow)のHTML（呼び出し側でエスケープ）
+export function setFacilityMarker(maps, { position, title = "", labelHtml = "" } = {}) {
+  clearFacilityMarker();
+  if (!panorama || !position) return;
+  facilityMarker = new maps.Marker({ position, map: panorama, title }); // 既定の赤ピン（建物方向に出る）
+  if (labelHtml) {
+    // disableAutoPan: ラベル表示でPOVを勝手に動かさない。Googleのロゴ・下部コントロールは覆わない。
+    facilityInfo = new maps.InfoWindow({ content: labelHtml, disableAutoPan: true });
+    facilityInfo.open({ map: panorama, anchor: facilityMarker });
+  }
+}
+
+// 避難先マーカー/ラベルを外す（破棄・終了・別施設へ切替時）。残して二重表示やリークにしない。
+export function clearFacilityMarker() {
+  if (facilityInfo) { try { facilityInfo.close(); } catch { /* 生成途中など */ } facilityInfo = null; }
+  if (facilityMarker) { try { facilityMarker.setMap(null); } catch { /* 生成途中など */ } facilityMarker = null; }
+}
+
 // パノラマを破棄して DOM をクリーンにする（戻る/終了時）。Google に明示的な destroy は無いので、
 // 参照を切り、host の中身（widget が生成した DOM）を空にして GC に委ねる。
 export function destroyPanorama() {
+  clearFacilityMarker();
   if (panorama) {
+    // onPanoramaUpdate で付けたリスナを外す（古いパノラマ・古いコールバックを残さない）
+    try { window.google?.maps?.event?.clearInstanceListeners(panorama); } catch { /* 生成途中など */ }
     try { panorama.setVisible(false); } catch { /* 生成途中など */ }
   }
   panorama = null;

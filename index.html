@@ -57,9 +57,14 @@
     </div>
 
     <!-- Googleストリートビュー（追加ビュー）。既存の現地目線ビュー(#arView)とは独立した全画面表示。
-         APIキー未設定・パノラマ未提供時は #svMessage を出し、既存ビューへ戻れるようにする。 -->
+         APIキー未設定・パノラマ未提供時は #svMessage を出し、既存ビューへ戻れるようにする。
+         道順ガイド: #svGuide(次の方向ピル) / #svArrow(進行方向の矢印) / #svMiniMap(経路つきミニマップ)。
+         いずれも上部・右上に集約し、Googleのロゴ・著作権・下部コントロールを覆わない。 -->
     <div id="streetView" hidden>
       <div id="svPano"></div>
+      <div id="svArrow" hidden aria-hidden="true"><span id="svArrowInner">⬆</span></div>
+      <div id="svGuide"></div>
+      <canvas id="svMiniMap" aria-label="経路ミニマップ"></canvas>
       <div id="svOverlay"></div>
       <div id="svMessage" hidden></div>
       <button id="svExit" type="button">✕ 終了</button>
