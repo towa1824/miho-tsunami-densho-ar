@@ -42,6 +42,18 @@ function streetviewBtnHtml(f, label = "📷 Googleストリートビューで周
   return `<button class="svBtn" type="button" data-act="sv" data-id="${esc(f.id)}">${label}</button>`;
 }
 
+// 伝承カードに添える「📷 ストリートビューで見る」追加ボタン（案B: 別導線）。
+// 既存「🧭 ARで深く学ぶ」(合成3D)は一切変えず、これを別ボタンとして足す。座標の無い伝承は対象外。
+// キー未設定時は無効化して理由を示す（合成3Dの学習は従来どおり使えるので体験は壊れない）。
+function traditionSvBtnHtml(t) {
+  if (!hasPos(t)) return "";
+  if (!STREETVIEW_ENABLED) {
+    return `<button class="svBtn" type="button" disabled
+      title="Google Street View APIキーが未設定です">📷 ストリートビュー（APIキー未設定）</button>`;
+  }
+  return `<button class="svBtn" type="button" data-act="svt" data-id="${esc(t.id)}">📷 ストリートビューで見る</button>`;
+}
+
 // ---------------- 避難施設タブ ----------------
 export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot", presortedNear = null) {
   if (!pos) {
@@ -136,7 +148,8 @@ export function renderTraditionsTab(el, pos, handlers) {
       ${hasPos(t) ? `<div class="btnRow">
         <button data-act="mapt" data-lat="${t.lat}" data-lng="${t.lng}">地図で見る</button>
         <button data-act="learn" data-id="${esc(t.id)}" class="primary">🧭 ARで深く学ぶ</button>
-      </div>` : ""}
+      </div>
+      <div class="btnRow">${traditionSvBtnHtml(t)}</div>` : ""}
     </div>`;
   };
 
@@ -276,6 +289,7 @@ function bindActs(el, handlers) {
       if (act === "mapt") handlers.onPanTo(+b.dataset.lat, +b.dataset.lng);
       if (act === "learn") handlers.onLearnTradition(b.dataset.id);
       if (act === "sv") handlers.onStreetView?.(b.dataset.id);
+      if (act === "svt") handlers.onTraditionStreetView?.(b.dataset.id);
     });
   });
 }
@@ -362,6 +376,34 @@ export function streetviewOverlayHtml(f, dir, t, route = null, expanded = false)
     <div class="why">理由: ${esc(f.why)}</div>
     ${t ? `<div class="caution">📜 近くの伝承・史料: ${esc(t.title)}（約${formatDist(t._dist)}）${tcv ? `・${esc(tcv)}` : ""} — ${esc(TRADITION_NOTE)}</div>` : ""}
     <div class="navSrc">${esc(STREETVIEW_NOTE)}<br>地図・パノラマ © Google。道順案内は参考表示であり正式な徒歩避難経路ではありません${routeSrc}。</div>`;
+  return `<div class="svCard${expanded ? " expanded" : ""}">
+    <button class="svToggle" type="button" data-act="toggleSv">
+      <span class="navHead">${head}</span><span class="navChev">${expanded ? "▾" : "▸"}</span>
+    </button>
+    <div class="svBody">${body}</div>
+  </div>`;
+}
+
+// ストリートビュー「伝承学習モード」の折りたたみ式解説カード（案B）。避難ナビではないので道順は出さない。
+// 中身は learnOverlayHtml 相当（関連災害・推定震度/記録津波高・要約・避難への意味づけ・注意・出典）。
+// 代表点/おおよその位置は coordCaveat で必ず明示し、パノラマ地点＝実地点と断定しない。
+// 折りたたみ svCard を流用（既定は折りたたみ＝景色を見やすく。タップで全文を読む）。
+export function traditionStreetviewOverlayHtml(t, expanded = false) {
+  const ht = t.recorded_height_m != null
+    ? `<span class="chip">🌊 記録 約${esc(t.recorded_height_m)}m</span>` : "";
+  const intenStr = intensityLabel(t);
+  const inten = intenStr ? `<span class="chip">推定震度 ${esc(intenStr)}</span>` : "";
+  const cv = coordCaveat(t);                          // 代表点/面・線情報の注記（location_kind 由来）
+  const cvBanner = cv ? `<div class="caution">📍 ${esc(cv)}</div>` : "";
+  const head = `📜 ${esc(t.title)}`;
+  const body = `
+    <div class="learnChips">関連災害: ${esc(t.disaster)}${ht}${inten}</div>
+    ${cvBanner}
+    <div class="learnBody">${esc(t.summary)}</div>
+    <div class="why" style="border-left-color:#ef6c00;background:#fff7ef">🧭 避難への意味づけ: ${esc(t.evacuation_message)}</div>
+    <div class="caution">${esc(t.caution)}</div>
+    ${srcHtml(t)}
+    <div class="navSrc">${esc(TRADITION_NOTE)}<br>${esc(STREETVIEW_NOTE)}<br>パノラマ © Google／伝承の出典は上記リンク。</div>`;
   return `<div class="svCard${expanded ? " expanded" : ""}">
     <button class="svToggle" type="button" data-act="toggleSv">
       <span class="navHead">${head}</span><span class="navChev">${expanded ? "▾" : "▸"}</span>
