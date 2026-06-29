@@ -11,11 +11,11 @@
   {
     "id": "demo_gohojinja",
     "label": "御穂神社付近",
-    "lat": 35.000086,
-    "lng": 138.520848,
+    "lat": 35.000464,
+    "lng": 138.521086,
     "source_title": "OpenStreetMap 御穂神社（GSI地名検索とも約200mで一致）",
     "source_url": "https://www.openstreetmap.org/",
-    "note": "宝永地震で村民が避難したと記録される御宮の前。"
+    "note": "宝永地震で村民が避難したと記録される御宮の前。神社出口（南側公道接点）座標に更新（OpenStreetMap確認済み）。"
   },
   {
     "id": "demo_hinode",
