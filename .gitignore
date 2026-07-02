@@ -4,8 +4,10 @@ dist/
 .DS_Store
 .vite/
 
-# Claude Code / エディタのローカル設定（個人環境依存・共有不要）
-.claude/
+# Claude Code / エディタのローカル設定（個人環境依存・共有不要）。
+# ただし project skill（.claude/skills/）はチームで共有するため追跡する。
+.claude/*
+!.claude/skills/
 
 # ローカルの環境変数（APIキー等・共有しない）。雛形の .env.example のみ追跡する。
 .env
