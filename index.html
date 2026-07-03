@@ -71,6 +71,10 @@
            Google のロゴ・著作権・標準UIは隠さない。経路は参考表示（安全/正式な避難経路ではない）。 -->
       <button id="svMapBtn" type="button" hidden
               title="ストリートビューの矢印で進めない時は、2D地図で参考経路を確認できます">🗺 2D地図</button>
+      <!-- 経路上にストリートビュー未提供の道があり矢印で先へ進めない時、残りの経路上で次に
+           パノラマがある地点へジャンプする（避難所モードで経路取得後のみ表示。main.js が配線）。 -->
+      <button id="svJumpBtn" type="button" hidden
+              title="矢印で進めなくなったら、経路の先でストリートビューがある地点までジャンプします">⏭ 経路の先へ</button>
       <div id="svGoogleMapPanel" class="svGoogleMapPanel" hidden>
         <div class="svgmBar">
           <span class="svgmTitle">🗺 Google Mapで参考経路</span>

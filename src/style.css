@@ -480,6 +480,17 @@ body.sheet-collapsed #panel { padding-top: 0; padding-bottom: 0; overflow: hidde
 }
 #svMapBtn[hidden] { display: none; }
 
+/* 経路の先へジャンプ（SV未提供区間を飛ばす）。2D地図ボタンの上に積む（同じ左下エリア。
+   Googleロゴ/下部コントロールは覆わない）。探索中は disabled で二重実行を防ぐ */
+#svJumpBtn {
+  position: absolute; left: 8px; bottom: 124px; z-index: 522;
+  background: rgba(255,255,255,.95); border: 1px solid #2e7d32; color: #1b5e20;
+  border-radius: 18px; padding: 8px 14px; font-size: 13px; font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+}
+#svJumpBtn[hidden] { display: none; }
+#svJumpBtn:disabled { opacity: .65; }
+
 /* 地図パネル。既定は小（右上・ミニマップ跡地）、.expanded で画面の大部分を使う。
    Google Map 自身のロゴ・著作権・帰属は #svGoogleMap 内に表示され、隠さない。 */
 .svGoogleMapPanel {

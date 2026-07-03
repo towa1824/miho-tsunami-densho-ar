@@ -10,7 +10,7 @@ import {
   renderFacilitiesTab, renderTraditionsTab, renderArTab, renderAboutTab,
   arOverlayHtml, learnOverlayHtml, streetviewOverlayHtml, traditionStreetviewOverlayHtml,
 } from "./ui.js";
-import { distanceM, bearingDeg, destPoint, compassLabel, travelTimeMin, formatDuration, formatDist, routePositionInfo, TRAVEL_LABEL } from "./geo.js";
+import { distanceM, bearingDeg, destPoint, compassLabel, travelTimeMin, formatDuration, formatDist, routePositionInfo, routePointsAhead, TRAVEL_LABEL } from "./geo.js";
 
 const state = {
   pos: null,        // {lat,lng}
@@ -83,6 +83,7 @@ const el = {
   svArrowInner: document.getElementById("svArrowInner"),
   svMiniMap: document.getElementById("svMiniMap"),
   svMapBtn: document.getElementById("svMapBtn"),
+  svJumpBtn: document.getElementById("svJumpBtn"),
   svGoogleMapPanel: document.getElementById("svGoogleMapPanel"),
   svGoogleMap: document.getElementById("svGoogleMap"),
   svGoogleMapExpand: document.getElementById("svGoogleMapExpand"),
@@ -95,6 +96,7 @@ const el = {
 let arMini = null;
 let svMini = null;
 let svGuideRaf = 0; // pov_changed連発でも描画を間引く（rAFで1フレーム1回）
+let svJumpBusy = false; // 「経路の先へ」探索中の二重実行防止
 
 // Street View の名前ラベル(InfoWindow)へ施設名を埋める時の最小エスケープ（データは自前JSONだが念のため）
 function escHtml(s) {
@@ -712,6 +714,45 @@ function toggleSvMapType() {
   syncSvMapTypeBtn();
 }
 
+// ---- 「⏭ 経路の先へ」: SV未提供区間のジャンプ（避難所モードのみ）----
+// 経路上にストリートビューが無い道があると Google の移動矢印が途切れて先へ進めない。
+// その時に残りの経路を約60m間隔でサンプリングし（routePointsAhead）、次にパノラマがある
+// 地点を探して（findPanoramaAhead・メタデータ照会のみ）そこへジャンプする。
+const SV_JUMP_LABEL = "⏭ 経路の先へ";
+async function jumpAlongRoute() {
+  if (svJumpBusy || state.svMode !== "facility" || !gmaps) return;
+  const f = state.streetviewFacility;
+  const coords = state.svRoute?.geometry?.coordinates;
+  const panoPos = SV.getPanoramaPosition();
+  if (!f || !coords || !panoPos) return;
+  svJumpBusy = true;
+  el.svJumpBtn.disabled = true;
+  el.svJumpBtn.textContent = "⏳ 経路の先を探索中…";
+  try {
+    // startM=40: 今いるパノラマの直近を拾って同じ場所へ「ジャンプ」しないよう少し先から探す。
+    // radius=35: 経路から離れたパノラマを拾うと道順案内と食い違うため小さく保つ。
+    const points = routePointsAhead(coords, panoPos, { stepM: 60, startM: 40, maxPoints: 25 });
+    const found = await SV.findPanoramaAhead(gmaps, points, { radius: 35, excludePano: SV.getPanoramaId() });
+    if (state.streetviewFacility !== f || state.svMode !== "facility") return; // 探索中に閉じた/切替えた
+    if (found) {
+      const p = { lat: found.location.latLng.lat(), lng: found.location.latLng.lng() };
+      // ジャンプ後の向きは道なり（look-ahead）。経路情報が取れない時は避難先への直線方位。
+      const heading = routePositionInfo(coords, p, 25)?.brg ?? bearingDeg(p.lat, p.lng, f.lat, f.lng);
+      SV.jumpToPano(found.location.pano, heading); // position_changed → 道順ガイド/2D地図が自動追従
+    } else {
+      // この先の経路沿いにSVが無い: 既存HUDの警告表示で2D地図・OSMビューへ誘導（見回すと通常表示へ戻る）
+      el.svGuide.classList.remove("aligned");
+      el.svGuide.classList.add("warn");
+      el.svGuide.innerHTML =
+        "⚠ この先の経路沿いにはストリートビューが見つかりません。2D地図または現地目線ビュー（OSM）で経路を確認してください";
+    }
+  } finally {
+    svJumpBusy = false;
+    el.svJumpBtn.disabled = false;
+    el.svJumpBtn.textContent = SV_JUMP_LABEL;
+  }
+}
+
 // パノラマ領域に重ねるメッセージ（読込中スピナー／未設定・未提供・失敗の案内）。
 // 文言はすべて固定文字列なのでエスケープ不要。spinner時はボタンを出さない。
 function showSvMessage(title, desc, { spinner = false } = {}) {
@@ -775,6 +816,8 @@ async function openStreetView(facility) {
   el.svGoogleMapPanel.hidden = true;
   el.svGoogleMapPanel.classList.remove("expanded");
   el.svMapBtn.hidden = true;
+  el.svJumpBtn.hidden = true; // 経路取得に成功した時だけ出す（経路が無いと「先」が定まらない）
+  el.svJumpBtn.textContent = SV_JUMP_LABEL;
   renderSvOverlay(facility); // 施設名・種別・理由・方向・伝承・注意文は最初から読める
 
   if (!SV.hasApiKey()) {
@@ -854,6 +897,7 @@ async function openStreetView(facility) {
       };
       renderSvOverlay(facility); // カードに道順の総距離・所要時間を反映
       updateSvGuidance();        // 道なりの「次にどっちへ」へ切替
+      el.svJumpBtn.hidden = false; // 経路が取れた → SV未提供区間を飛ばす「経路の先へ」を出す
     }
   }
 }
@@ -887,6 +931,7 @@ async function openTraditionStreetView(t) {
   el.svGoogleMapPanel.hidden = true;
   el.svGoogleMapPanel.classList.remove("expanded");
   el.svMapBtn.hidden = true;
+  el.svJumpBtn.hidden = true; // 道順用のジャンプも学習モードでは出さない
   renderTraditionSvOverlay(t);      // 解説カード（出典・注意文）は最初から開閉して読める
 
   if (!SV.hasApiKey()) {
@@ -954,6 +999,8 @@ function closeStreetView() {
   el.svGoogleMapPanel.hidden = true;
   el.svGoogleMapPanel.classList.remove("expanded");
   el.svMapBtn.hidden = true;
+  el.svJumpBtn.hidden = true;
+  el.svJumpBtn.textContent = SV_JUMP_LABEL;
   el.streetView.hidden = true;
   el.svOverlay.innerHTML = "";
   el.svGuide.textContent = "";
@@ -1011,6 +1058,7 @@ function init() {
   });
   // Street View 内の2D Google Map: 開く／拡大・縮小／地図⇄空撮／閉じる
   el.svMapBtn.addEventListener("click", openSvMap);
+  el.svJumpBtn.addEventListener("click", jumpAlongRoute); // SV未提供区間を飛ばして経路の先から再開
   el.svGoogleMapExpand.addEventListener("click", toggleSvMapExpand);
   el.svgmType.addEventListener("click", toggleSvMapType);
   el.svGoogleMapClose.addEventListener("click", closeSvMap);
