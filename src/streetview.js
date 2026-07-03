@@ -78,6 +78,18 @@ function getPanoramaOnce(svc, maps, location, radius) {
   });
 }
 
+// 地点列（経路の先のサンプル点）から「現在と別のパノラマ」を近い順に探す（SV未提供区間の
+// ジャンプ用）。radius は小さく保ち、経路から離れたパノラマを拾って案内と食い違わないようにする。
+// StreetViewService のメタデータ照会のみで、パノラマ本体（課金対象の widget）は生成しない。
+export async function findPanoramaAhead(maps, points, { radius = 35, excludePano = null } = {}) {
+  const svc = new maps.StreetViewService();
+  for (const p of points) {
+    const data = await getPanoramaOnce(svc, maps, { lat: p.lat, lng: p.lng }, radius);
+    if (data?.location?.pano && data.location.pano !== excludePano) return data;
+  }
+  return null;
+}
+
 // パノラマを host 要素に表示する。location は LatLng（findPanorama の data.location.latLng）。
 // heading は初期方位（0=北・時計回り。現在地→避難施設の bearing を渡す）。
 export function initPanorama(maps, host, { location, pano = null, heading = 0 } = {}) {
@@ -107,6 +119,19 @@ export function initPanorama(maps, host, { location, pano = null, heading = 0 } 
 export function getPanoramaPosition() {
   const p = panorama?.getPosition?.();
   return p ? { lat: p.lat(), lng: p.lng() } : null;
+}
+
+// 現在表示中のパノラマID。ジャンプ探索で「今と同じパノラマ」を除外するために使う。
+export function getPanoramaId() {
+  return panorama?.getPano?.() ?? null;
+}
+
+// 表示中のパノラマを別のパノラマ（ID）へ移動して向きを設定する。widget は作り直さない
+// （リスナ・課金カウントを増やさない）。position_changed が発火し、道順ガイド側が自動追従する。
+export function jumpToPano(pano, heading = null) {
+  if (!panorama || !pano) return;
+  panorama.setPano(pano);
+  if (heading != null) panorama.setPov({ heading, pitch: 0 });
 }
 
 // 現在のPOVの向き（0=北・時計回り）。Street View には端末方位が無いので、これを「見ている向き」として使う。

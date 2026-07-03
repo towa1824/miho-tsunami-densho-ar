@@ -133,6 +133,47 @@ export function routeGuidance(coords, pos, aheadM = 25) {
   return info ? { brg: info.brg, distAhead: info.distAhead, remainingM: info.remainingM } : null;
 }
 
+// 経路上で pos の最近点より「先」を stepM 間隔でサンプリングした地点列（[{lat,lng},…]・経路終点を含む）。
+// Street View 未提供区間で矢印が途切れた時に「経路の先のパノラマ」を探すために使う。
+// startM: 最初の点を最近点から startM 先に置く（現在地の直近を拾って同じパノラマへ戻らないため）。
+// maxPoints: サンプル数の上限（1点=パノラマ照会1回になるので、探索リクエスト数の上限を兼ねる）。
+export function routePointsAhead(coords, pos, { stepM = 60, startM = 40, maxPoints = 25 } = {}) {
+  if (!Array.isArray(coords) || coords.length < 2 || !pos) return [];
+  const pts = coords.map(([lng, lat]) => toEastNorth(lat, lng, pos.lat, pos.lng));
+  // pos(=原点)に最も近い経路上の点（routePositionInfo と同じ線分への射影）
+  let bestD = Infinity, bestI = 1, bestT = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const dx = b.east - a.east, dy = b.north - a.north, len2 = dx * dx + dy * dy || 1e-9;
+    let t = ((0 - a.east) * dx + (0 - a.north) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.east + dx * t, cy = a.north + dy * t;
+    const d = cx * cx + cy * cy;
+    if (d < bestD) { bestD = d; bestI = i; bestT = t; }
+  }
+  const a0 = pts[bestI - 1], b0 = pts[bestI];
+  let cx = a0.east + (b0.east - a0.east) * bestT;
+  let cy = a0.north + (b0.north - a0.north) * bestT;
+  // 最近点から道なりに距離を積算し、startM 以降 stepM ごとに点を打つ
+  const out = [];
+  let next = startM, acc = 0;
+  for (let i = bestI; i < pts.length && out.length < maxPoints; i++) {
+    const b = pts[i];
+    const dx = b.east - cx, dy = b.north - cy, seg = Math.hypot(dx, dy);
+    while (seg > 1e-9 && acc + seg >= next && out.length < maxPoints) {
+      const t = (next - acc) / seg;
+      out.push(fromEastNorth(cx + dx * t, cy + dy * t, pos.lat, pos.lng));
+      next += stepM;
+    }
+    acc += seg; cx = b.east; cy = b.north;
+  }
+  if (out.length < maxPoints) {
+    const last = pts[pts.length - 1];
+    out.push(fromEastNorth(last.east, last.north, pos.lat, pos.lng)); // 終点（避難先側）も必ず試す
+  }
+  return out;
+}
+
 // 起点(lat,lng)から方位bearing(度)・距離d(m)だけ進んだ地点
 export function destPoint(lat, lng, brgDeg, d) {
   const br = (brgDeg * Math.PI) / 180;
