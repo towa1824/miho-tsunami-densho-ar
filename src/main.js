@@ -843,6 +843,11 @@ async function jumpAlongRoute() {
   }
 }
 
+// ストリートビューは道路沿いなど実際に撮影された場所でのみ提供されるため、道路から離れた地点
+// だと見つからないことがある。読込中・未検出の案内に添えて、道路に近い地点の選び方を促す。
+const SV_ROAD_TIP =
+  "なるべく地図で道路に近い地点を指定するか、道路に近い地点で画面上部に既にある『現在地:』のGPS選択肢を使ってください。";
+
 // パノラマ領域に重ねるメッセージ（読込中スピナー／未設定・未提供・失敗の案内）。
 // 文言はすべて固定文字列なのでエスケープ不要。spinner時はボタンを出さない。
 function showSvMessage(title, desc, { spinner = false } = {}) {
@@ -915,7 +920,7 @@ async function openStreetView(facility) {
       "OSM/OSRM の現地目線ビュー（カメラ不要）はそのままご利用いただけます。");
     return;
   }
-  showSvMessage("Googleストリートビューを読み込み中…", "", { spinner: true });
+  showSvMessage("Googleストリートビューを読み込み中…", SV_ROAD_TIP, { spinner: true });
 
   let maps;
   try {
@@ -942,7 +947,7 @@ async function openStreetView(facility) {
   if (state.streetviewFacility !== facility) return;
   if (!found) {
     showSvMessage("この地点周辺のGoogleストリートビューが見つかりませんでした。",
-      "現地目線ビュー（OSM）なら同じ場所を確認できます。");
+      `現地目線ビュー（OSM）なら同じ場所を確認できます。${SV_ROAD_TIP}`);
     return;
   }
   try {
@@ -1029,7 +1034,7 @@ async function openTraditionStreetView(t) {
       "「🏙 3D（OSM）で深く学ぶ」では同じ伝承スポットを合成3Dで学べます。");
     return;
   }
-  showSvMessage("Googleストリートビューを読み込み中…", "", { spinner: true });
+  showSvMessage("Googleストリートビューを読み込み中…", SV_ROAD_TIP, { spinner: true });
 
   let maps;
   try {
@@ -1050,7 +1055,7 @@ async function openTraditionStreetView(t) {
   if (state.streetviewTradition !== t) return;
   if (!found) {
     showSvMessage("この伝承スポット周辺のGoogleストリートビューが見つかりませんでした。",
-      "「🏙 3D（OSM）で深く学ぶ」なら同じ場所を3Dで確認できます。");
+      `「🏙 3D（OSM）で深く学ぶ」なら同じ場所を3Dで確認できます。${SV_ROAD_TIP}`);
     return;
   }
   try {
