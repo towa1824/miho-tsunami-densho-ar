@@ -849,18 +849,21 @@ const SV_ROAD_TIP =
   "なるべく地図で道路に近い地点を指定するか、道路に近い地点で画面上部に既にある『現在地:』のGPS選択肢を使ってください。";
 
 // パノラマ領域に重ねるメッセージ（読込中スピナー／未設定・未提供・失敗の案内）。
-// 文言はすべて固定文字列なのでエスケープ不要。spinner時はボタンを出さない。
-function showSvMessage(title, desc, { spinner = false } = {}) {
+// 文言はすべて固定文字列なのでエスケープ不要。
+// closeAction: "exit"(既定)=✕でストリートビューごと終了 ／ "dismiss"=✕はこのメッセージを閉じるだけ
+// （道路に近い地点を促す案内は一瞬で消えると読めないため、読込中でも✕を出し、自動では閉じない）。
+function showSvMessage(title, desc, { spinner = false, closeAction = "exit" } = {}) {
   // フォールバック導線はモードで切替: facility=避難所の現地目線ビュー(3D)、tradition=伝承の合成3D学習。
+  // dismiss（読込中/表示済みの案内）ではフォールバック不要（失敗していないため）。
   let fallbackBtn = "";
-  if (!spinner) {
+  if (!spinner && closeAction === "exit") {
     if (state.svMode === "tradition" && state.streetviewTradition) {
       fallbackBtn = `<button id="svToLearn" type="button" class="primary">🏙 3D（OSM）で深く学ぶ</button>`;
     } else if (state.streetviewFacility) {
       fallbackBtn = `<button id="svToSim" type="button" class="primary">🧭 現地目線ビュー（OSM）を開く</button>`;
     }
   }
-  const buttons = spinner ? "" : `
+  const buttons = `
     <div class="svMsgBtns">
       ${fallbackBtn}
       <button id="svMsgClose" type="button">✕ 閉じる</button>
@@ -873,7 +876,8 @@ function showSvMessage(title, desc, { spinner = false } = {}) {
       ${buttons}
     </div>`;
   el.svMessage.hidden = false;
-  el.svMessage.querySelector("#svMsgClose")?.addEventListener("click", closeStreetView);
+  el.svMessage.querySelector("#svMsgClose")?.addEventListener("click",
+    closeAction === "dismiss" ? hideSvMessage : closeStreetView);
   el.svMessage.querySelector("#svToSim")?.addEventListener("click", () => {
     const fac = state.streetviewFacility;
     closeStreetView();
@@ -920,7 +924,7 @@ async function openStreetView(facility) {
       "OSM/OSRM の現地目線ビュー（カメラ不要）はそのままご利用いただけます。");
     return;
   }
-  showSvMessage("Googleストリートビューを読み込み中…", SV_ROAD_TIP, { spinner: true });
+  showSvMessage("Googleストリートビューを読み込み中…", SV_ROAD_TIP, { spinner: true, closeAction: "dismiss" });
 
   let maps;
   try {
@@ -954,7 +958,8 @@ async function openStreetView(facility) {
     const panoPos = { lat: found.location.latLng.lat(), lng: found.location.latLng.lng() };
     // 初期方位は避難施設への直線方位（最初から避難先側を向く）。経路取得後は左右案内を矢印/HUDで補う。
     const heading = bearingDeg(panoPos.lat, panoPos.lng, facility.lat, facility.lng);
-    hideSvMessage();
+    // 見つかった直後もこの案内は✕を押すまで残す（読込中の一瞬だけでは読めないため自動では閉じない）。
+    showSvMessage("この地点のGoogleストリートビューを表示します。", SV_ROAD_TIP, { closeAction: "dismiss" });
     SV.initPanorama(maps, el.svPano, {
       location: found.location.latLng, pano: found.location.pano, heading,
     });
@@ -1034,7 +1039,7 @@ async function openTraditionStreetView(t) {
       "「🏙 3D（OSM）で深く学ぶ」では同じ伝承スポットを合成3Dで学べます。");
     return;
   }
-  showSvMessage("Googleストリートビューを読み込み中…", SV_ROAD_TIP, { spinner: true });
+  showSvMessage("Googleストリートビューを読み込み中…", SV_ROAD_TIP, { spinner: true, closeAction: "dismiss" });
 
   let maps;
   try {
@@ -1062,7 +1067,8 @@ async function openTraditionStreetView(t) {
     const panoPos = { lat: found.location.latLng.lat(), lng: found.location.latLng.lng() };
     // 初期方位は伝承スポット方向（最初からスポット側を向く）
     const heading = bearingDeg(panoPos.lat, panoPos.lng, t.lat, t.lng);
-    hideSvMessage();
+    // 見つかった直後もこの案内は✕を押すまで残す（読込中の一瞬だけでは読めないため自動では閉じない）。
+    showSvMessage("この伝承スポットのGoogleストリートビューを表示します。", SV_ROAD_TIP, { closeAction: "dismiss" });
     SV.initPanorama(maps, el.svPano, {
       location: found.location.latLng, pano: found.location.pano, heading,
     });
