@@ -76,6 +76,10 @@
       <button id="svJumpBtn" type="button" hidden
               title="矢印で進めなくなったら、経路の先でストリートビューがある地点までジャンプします">⏭ 経路の先へ</button>
       <div id="svGoogleMapPanel" class="svGoogleMapPanel" hidden>
+        <!-- パネルは右上固定(top/right指定)なので、動く自由角=左下にドラッグ用つまみを置く。
+             左/下へ引っ張ると拡大（Pointer Eventsは main.js の setupSheet と同じ方式）。
+             拡大(.expanded)中は top/left/right/bottom の自動サイズなのでCSSで隠す。 -->
+        <div id="svGoogleMapResize" class="svgmResize" aria-hidden="true" title="ドラッグでサイズ変更"></div>
         <div class="svgmBar">
           <span class="svgmTitle">🗺 Google Mapで参考経路</span>
           <span id="svgmRouteMode" class="svgmMode"></span>

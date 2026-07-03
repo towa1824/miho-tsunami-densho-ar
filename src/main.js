@@ -40,6 +40,9 @@ let svExpanded = false; // ストリートビューの下部カードの展開�
 let gmaps = null;       // loadGoogleMaps() で得た window.google.maps（2D地図パネルで再利用）
 let svMapOpen = false;  // Street View 内の2D Google Mapパネルを開いているか
 let svMapExpanded = false; // 2D地図パネルが拡大状態か
+// ドラッグでユーザーが決めた2D地図パネルの小サイズ（{w,h}px）。streetview-map.js の mapType と同様、
+// セッション中は次にパネルを開いた時にも引き継ぐ（既定値=CSSの140x160に戻すよりも使い勝手を優先）。
+let svGoogleMapSize = null;
 let arStatusMsg = "";
 let navExpanded = false; // ナビカードの展開状態（折りたたみ）
 let headingTimer = null;
@@ -86,6 +89,7 @@ const el = {
   svJumpBtn: document.getElementById("svJumpBtn"),
   svGoogleMapPanel: document.getElementById("svGoogleMapPanel"),
   svGoogleMap: document.getElementById("svGoogleMap"),
+  svGoogleMapResize: document.getElementById("svGoogleMapResize"),
   svGoogleMapExpand: document.getElementById("svGoogleMapExpand"),
   svGoogleMapClose: document.getElementById("svGoogleMapClose"),
   svgmRouteMode: document.getElementById("svgmRouteMode"),
@@ -666,6 +670,7 @@ function openSvMap() {
   svMapExpanded = false;
   el.svGoogleMapPanel.hidden = false;
   el.svGoogleMapPanel.classList.remove("expanded");
+  applySvGoogleMapSize(); // 前回ドラッグで決めたサイズがあれば復元（無ければ既定のCSSサイズ）
   if (el.svGoogleMapExpand) el.svGoogleMapExpand.textContent = "⤢"; // 小サイズは省スペースのアイコンのみ
   if (el.svgmRouteMode) el.svgmRouteMode.textContent = svRouteModeLabel();
   el.svMapBtn.hidden = true;   // 開いている間は起動ボタンを隠す
@@ -692,13 +697,98 @@ function closeSvMap() {
   }
 }
 
+// 現在の画面サイズを基準にした2D地図パネルの許容範囲。maxはCSSの.expandedと同じクリアランス
+// （左右8px・上52px・下80pxを残す）に合わせる。ドラッグ開始時・サイズ復元時の両方で使う共通計算。
+function svGoogleMapBounds() {
+  const MIN = 110; // これ未満だと地図とマーカーが読み取れない
+  return {
+    min: MIN,
+    maxW: Math.max(MIN, window.innerWidth - 16),
+    maxH: Math.max(MIN, window.innerHeight - 52 - 80),
+  };
+}
+
+// 小サイズへ戻す時に適用する幅/高さ。ドラッグで決めたサイズ(svGoogleMapSize)があればそれを、
+// 無ければ空文字でCSS既定(140x160)に委ねる。.expanded中はCSS側の自動サイズ(width/height:auto)を
+// 使うので、拡大時はここで空文字にしてインラインスタイルを一旦外す（残っていると auto を上書きしてしまう）。
+// 前回保存時より画面が狭くなっていることがある（例: 別デバイス・画面回転）ため、適用のたびに
+// 現在の画面サイズでクランプし直す（画面外へはみ出したまま復元しない）。
+function applySvGoogleMapSize() {
+  if (svGoogleMapSize) {
+    const b = svGoogleMapBounds();
+    svGoogleMapSize = {
+      w: Math.min(b.maxW, Math.max(b.min, svGoogleMapSize.w)),
+      h: Math.min(b.maxH, Math.max(b.min, svGoogleMapSize.h)),
+    };
+    el.svGoogleMapPanel.style.width = `${svGoogleMapSize.w}px`;
+    el.svGoogleMapPanel.style.height = `${svGoogleMapSize.h}px`;
+  } else {
+    el.svGoogleMapPanel.style.width = "";
+    el.svGoogleMapPanel.style.height = "";
+  }
+}
+
 // 小⇄拡大の切替。Google Map にサイズ変更を通知して再フィットする。
 function toggleSvMapExpand() {
   svMapExpanded = !svMapExpanded;
   el.svGoogleMapPanel.classList.toggle("expanded", svMapExpanded);
+  if (svMapExpanded) {
+    el.svGoogleMapPanel.style.width = "";  // .expanded の width/height:auto を効かせる
+    el.svGoogleMapPanel.style.height = "";
+  } else {
+    applySvGoogleMapSize(); // 小サイズへ戻す→ドラッグで決めたサイズ（あれば）を復元
+  }
   if (el.svGoogleMapExpand) el.svGoogleMapExpand.textContent = svMapExpanded ? "⤡ 縮小" : "⤢";
   SVMap.resizeStreetViewMap();
   updateSvMapPanel();
+}
+
+// ---- 2D地図パネルのドラッグリサイズ（左下角のつまみ・小サイズ時のみ）----
+// 下部シート(setupSheet)と同じ Pointer Events 方式（マウス・タッチ両対応、setPointerCaptureで
+// 指がつまみから離れてもドラッグを継続）。パネルは top/right固定（右上アンカー）なので、
+// 左または下へ引っ張ると拡大する（動く自由角=左下）。
+// ドラッグ中はGoogle Mapの再フィットをrAFで間引く（連続trigger("resize")によるタイル再読込の
+// 負荷を避ける。toggleSvMapExpandと同じ resizeStreetViewMap()+updateSvMapPanel() を流用）。
+function setupSvGoogleMapResize() {
+  const handle = el.svGoogleMapResize, panel = el.svGoogleMapPanel;
+  let dragging = false, startX = 0, startY = 0, startW = 0, startH = 0, raf = 0;
+  let bounds = svGoogleMapBounds();
+  const liveResize = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; SVMap.resizeStreetViewMap(); updateSvMapPanel(); });
+  };
+  const onDown = (e) => {
+    if (svMapExpanded) return; // 拡大中はドラッグ対象外（top/left/right/bottomの自動サイズと衝突するため）
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    startW = panel.getBoundingClientRect().width;
+    startH = panel.getBoundingClientRect().height;
+    bounds = svGoogleMapBounds();
+    handle.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const dx = startX - e.clientX; // 左へ引っ張るほど＋（右端固定なので幅が増える）
+    const dy = e.clientY - startY; // 下へ引っ張るほど＋（上端固定なので高さが増える）
+    const w = Math.min(bounds.maxW, Math.max(bounds.min, startW + dx));
+    const h = Math.min(bounds.maxH, Math.max(bounds.min, startH + dy));
+    panel.style.width = `${w}px`;
+    panel.style.height = `${h}px`;
+    liveResize();
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    // 次回パネルを開いた時に復元できるよう、実測サイズを保存する
+    svGoogleMapSize = { w: panel.getBoundingClientRect().width, h: panel.getBoundingClientRect().height };
+    SVMap.resizeStreetViewMap();
+    updateSvMapPanel();
+  };
+  handle.addEventListener("pointerdown", onDown);
+  handle.addEventListener("pointermove", onMove);
+  handle.addEventListener("pointerup", onUp);
+  handle.addEventListener("pointercancel", onUp);
 }
 
 // 地図 ⇄ 空撮(航空写真) トグル。ボタンは「次に切り替わる方」を示す（空撮中は🗺、地図中は🛰）。
@@ -1062,6 +1152,7 @@ function init() {
   el.svGoogleMapExpand.addEventListener("click", toggleSvMapExpand);
   el.svgmType.addEventListener("click", toggleSvMapType);
   el.svGoogleMapClose.addEventListener("click", closeSvMap);
+  setupSvGoogleMapResize(); // 2D地図パネルの左下角ドラッグでサイズ変更
   setupDpad();
   setupSheet();
   el.travelToggle.querySelectorAll("button").forEach((b) =>
