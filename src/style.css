@@ -34,12 +34,35 @@ body { display: flex; flex-direction: column; }
 }
 
 #locBar {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   padding: 5px 10px; background: #fff; border-bottom: 1px solid #dde3e8;
   font-size: 12px;
 }
-#locBar select { font-size: 12px; padding: 2px 4px; max-width: 44vw; }
-#locLabel { color: #555; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#locBar button,
+#locBar select {
+  font: inherit; border: 1px solid #9fb2bf; background: #fff; color: #0d2b45;
+  border-radius: 7px; min-height: 28px;
+}
+#locBar button { padding: 4px 8px; font-weight: 700; }
+#locBar button.on,
+#locBar select.on { background: #e3f2fd; border-color: #1565c0; }
+.locGroup { display: flex; align-items: center; gap: 5px; flex: 1 1 360px; min-width: 0; }
+.demoPicker {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex: 1 1 150px;
+  color: #0d2b45; font-weight: 700;
+}
+.demoPicker select { min-width: 0; width: 100%; padding: 3px 5px; font-weight: 400; }
+.locBadge {
+  flex: 0 0 auto; border-radius: 999px; padding: 3px 8px;
+  background: #e8f5e9; color: #1b5e20; font-size: 11px; font-weight: 700;
+}
+.locBadge.gps { background: #e3f2fd; color: #0d47a1; }
+.locBadge.map,
+.locBadge.mapPending { background: #fff3e0; color: #7a4a00; }
+#locLabel {
+  flex: 1 1 160px; min-width: 0;
+  color: #555; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 #travelToggle { display: inline-flex; gap: 0; flex: 0 0 auto; }
 #travelToggle button {
@@ -66,6 +89,14 @@ body { display: flex; flex-direction: column; }
 /* z-index:0 で地図内のスタッキングを閉じ込める。ポップアップをコントロールより前面に
    出しても、その重なりは #map 内に留まり AR全画面(#arView, z-index:1000)へは被らない。 */
 #map { position: absolute; inset: 0; z-index: 0; }
+#mapPickGuide {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+  z-index: 450; pointer-events: none;
+  background: rgba(13,43,69,.9); color: #fff;
+  border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 700;
+  box-shadow: 0 2px 10px rgba(0,0,0,.35);
+}
+#mapPickGuide[hidden] { display: none; }
 
 /* AR起動中は全画面（合成シーン/カメラを大きく見せる） */
 #arView { position: fixed; inset: 0; background: #0b1f33; z-index: 1000; }
@@ -565,6 +596,12 @@ body.sheet-collapsed #panel { padding-top: 0; padding-bottom: 0; overflow: hidde
 
 /* スマホ表示: 情報ボックスをコンパクトにし、凡例・閉じる×・下部カードと重ならないよう調整 */
 @media (max-width: 759px) {
+  #locBar { gap: 5px; padding: 5px 7px; }
+  .locGroup { flex-basis: 100%; }
+  #locBar button { padding: 4px 7px; }
+  .demoPicker { flex-basis: 120px; }
+  #travelToggle { margin-left: auto; }
+  #locLabel { order: 4; flex-basis: 100%; }
   /* 長い説明文は3行で省略（全文は下部の一覧カードで読める）。マップ領域の圧迫を防ぐ */
   .leaflet-popup-content .pvDesc {
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;

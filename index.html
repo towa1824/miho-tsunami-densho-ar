@@ -17,18 +17,26 @@
   </header>
 
   <div id="locBar">
-    <label for="demoSelect">現在地:</label>
-    <select id="demoSelect"></select>
+    <div class="locGroup" aria-label="現在地の指定方法">
+      <button id="gpsBtn" type="button">📍GPS</button>
+      <button id="mapPickBtn" type="button">🖱 地図をタップ</button>
+      <label class="demoPicker" for="demoSelect">
+        <span>🧭 デモ</span>
+        <select id="demoSelect"></select>
+      </label>
+    </div>
+    <span id="locBadge" class="locBadge">デモ利用中</span>
     <span id="travelToggle" aria-label="移動手段">
       <button data-travel="foot" class="on" type="button">🚶 徒歩</button>
       <button data-travel="car" type="button">🚗 車</button>
     </span>
-    <span id="locLabel"></span>
+    <span id="locLabel" title=""></span>
   </div>
   <div id="routeSummary" hidden></div>
 
   <main id="stage">
     <div id="map"></div>
+    <div id="mapPickGuide" hidden>地図をタップして現在地を指定</div>
     <div id="arView" hidden>
       <div id="arCanvasHolder"></div>
       <div id="arHeading"></div>
