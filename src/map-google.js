@@ -127,6 +127,7 @@ function build(el) {
     },
     streetViewControl: false, fullscreenControl: false,
     clickableIcons: false, gestureHandling: "greedy",
+    scaleControl: true, // 縮尺（距離感の目安）
     // ズーム等の標準UI・Google のロゴ・著作権/帰属は残す（消さない）。
   });
   infoWindow = new maps.InfoWindow({ maxWidth: 280 });
