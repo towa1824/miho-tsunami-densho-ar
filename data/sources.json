@@ -104,7 +104,7 @@
     "note": "度分表記のため精度は約±1km。安政東海地震の記録で『清水検潮所前の道路面T.P.上2.1m』として参照される地点（安政東海地震に関する「道路面T.P.上2.1m」の記述は別資料（静岡市津波防災地域づくり推進計画等）による。）"
   },
   {
-    "id": "cck_chubusaigai_sennenji",
+    "id":"shizuoka_city_bosai_navi",
     "title": "静岡市防災ナビ（避難先一覧）",
     "publisher": "静岡市",
     "url": "https://navi.bosai.city.shizuoka.jp/evacuation-meeting-points?type=TsunamiEvacuationSite",
