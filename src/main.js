@@ -22,6 +22,7 @@ const state = {
   // "live"(ARカメラ)はユーザーがモード切替で明示的に選んだ時のみ使う。
   arMode: "sim",
   travelMode: "foot",   // 徒歩 / 車（F-09）
+  posKind: "demo",      // "demo" | "gps" | "map" | "mapPending"
   routedFacilityId: null,
   facilityRoadOrder: null, // 道路距離で並べ替えた避難先上位（取得できた時のみ。既定は直線距離順）
   routeGeometry: null,  // OSRMの経路形状（現地目線ビューの道筋描画に渡す）
@@ -52,6 +53,10 @@ let sheetIndex = 1;
 
 const el = {
   demoSelect: document.getElementById("demoSelect"),
+  gpsBtn: document.getElementById("gpsBtn"),
+  mapPickBtn: document.getElementById("mapPickBtn"),
+  mapPickGuide: document.getElementById("mapPickGuide"),
+  locBadge: document.getElementById("locBadge"),
   locLabel: document.getElementById("locLabel"),
   panel: document.getElementById("panel"),
   tabs: document.querySelectorAll("#tabs .tab"),
@@ -120,11 +125,14 @@ const handlers = {
 };
 
 // ---- 現在地 ----
-function setPos(pos, label, { isDemo = true, recenter = true } = {}) {
+function setPos(pos, label, { isDemo = true, recenter = true, posKind = isDemo ? "demo" : "gps" } = {}) {
   state.pos = pos;
   state.posLabel = label;
   state.usingDemo = isDemo;
+  state.posKind = posKind;
   el.locLabel.textContent = label;
+  el.locLabel.title = label;
+  updateLocationUi();
   MapView.setCurrentPos(pos, label, { recenter });
   MapView.clearRoute();
   state.routedFacilityId = null;
@@ -162,11 +170,8 @@ function scheduleRoadOrder() {
 }
 
 function initDemoSelect() {
-  const opts = [
-    `<option value="__map">🖱️ 地図クリックで指定</option>`,
-    `<option value="__gps">📍 GPSを使う（屋外・HTTPS）</option>`,
-  ].concat(demoLocations.map((d) =>
-    `<option value="${d.id}">🧭 デモ: ${d.label}</option>`));
+  const opts = demoLocations.map((d) =>
+    `<option value="${d.id}">${d.label}</option>`);
   el.demoSelect.innerHTML = opts.join("");
   // 既定は最初のデモ地点（発表・デスクトップ確認用 / CLAUDE.md: fakeGpsで開発）
   el.demoSelect.value = demoLocations[0].id;
@@ -175,37 +180,60 @@ function initDemoSelect() {
 
 function onDemoChange() {
   const v = el.demoSelect.value;
-  if (v === "__gps") return useGps();
-  if (v === "__map") {
-    el.locLabel.textContent = "地図上のいるあたりをクリックしてください";
-    return;
-  }
   const d = demoLocations.find((x) => x.id === v);
-  if (d) setPos({ lat: d.lat, lng: d.lng }, `デモ: ${d.label}`, { isDemo: true });
+  if (d) setPos({ lat: d.lat, lng: d.lng }, `デモ: ${d.label}`, { isDemo: true, posKind: "demo" });
+}
+
+function startMapPick() {
+  state.posKind = "mapPending";
+  el.locLabel.textContent = "地図上のいるあたりをタップしてください";
+  el.locLabel.title = el.locLabel.textContent;
+  updateLocationUi();
 }
 
 // 地図クリックで現在地を指定（その地点から避難案内）
 function onMapPick(lat, lng) {
-  el.demoSelect.value = "__map";
   setPos({ lat, lng }, `地図で選択した地点 (${lat.toFixed(5)}, ${lng.toFixed(5)})`,
-    { isDemo: true, recenter: false });
+    { isDemo: true, recenter: false, posKind: "map" });
 }
 
 function useGps() {
   if (!navigator.geolocation) {
     el.locLabel.textContent = "GPS非対応の環境です。デモ地点を選んでください。";
+    el.locLabel.title = el.locLabel.textContent;
+    updateLocationUi();
     return;
   }
+  state.posKind = "gps";
   el.locLabel.textContent = "GPS取得中…";
+  el.locLabel.title = el.locLabel.textContent;
+  updateLocationUi();
   navigator.geolocation.getCurrentPosition(
-    (p) => setPos({ lat: p.coords.latitude, lng: p.coords.longitude }, "GPS現在地", { isDemo: false }),
+    (p) => setPos({ lat: p.coords.latitude, lng: p.coords.longitude }, "GPS現在地", { isDemo: false, posKind: "gps" }),
     () => {
       el.locLabel.textContent = "GPS取得に失敗。デモ地点に戻します。";
+      el.locLabel.title = el.locLabel.textContent;
       el.demoSelect.value = demoLocations[0].id;
       onDemoChange();
     },
     { enableHighAccuracy: true, timeout: 8000 }
   );
+}
+
+function updateLocationUi() {
+  const labels = {
+    demo: "デモ利用中",
+    gps: "GPS利用中",
+    map: "地図指定",
+    mapPending: "地図指定待ち",
+  };
+  const kind = state.posKind || "demo";
+  el.locBadge.textContent = labels[kind] || labels.demo;
+  el.locBadge.className = `locBadge ${kind}`;
+  el.gpsBtn.classList.toggle("on", kind === "gps");
+  el.mapPickBtn.classList.toggle("on", kind === "map" || kind === "mapPending");
+  el.demoSelect.classList.toggle("on", kind === "demo");
+  el.mapPickGuide.hidden = kind !== "mapPending";
 }
 
 // ---- タブ ----
@@ -1166,6 +1194,8 @@ function init() {
   setupSvGoogleMapResize(); // 2D地図パネルの左下角ドラッグでサイズ変更
   setupDpad();
   setupSheet();
+  el.gpsBtn.addEventListener("click", useGps);
+  el.mapPickBtn.addEventListener("click", startMapPick);
   el.travelToggle.querySelectorAll("button").forEach((b) =>
     b.addEventListener("click", () => onTravelChange(b.dataset.travel)));
   onDemoChange(); // 初期デモ地点で表示
