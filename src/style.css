@@ -49,6 +49,16 @@ body { display: flex; flex-direction: column; }
 #travelToggle button:last-child { border-radius: 0 6px 6px 0; }
 #travelToggle button.on { background: #0d2b45; border-color: #0d2b45; color: #fff; }
 
+.travelCaution {
+  background: #fff8db;
+  color: #4f3a00;
+  border-bottom: 1px solid #ecd27a;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.travelCaution[hidden] { display: none; }
+
 #routeSummary {
   background: #0d2b45; color: #fff; font-size: 12px; padding: 5px 10px;
   display: flex; align-items: center; gap: 6px;
