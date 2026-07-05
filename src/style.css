@@ -215,6 +215,7 @@ body { display: flex; flex-direction: column; }
 
 /* 下部シートのドラッグハンドル（スマホのみ。PCは下のグリッドで display:none） */
 #sheetHandle {
+  position: relative;
   flex: none; display: flex; align-items: center; justify-content: center;
   width: 100%; height: 34px; padding: 0; border: none;
   background: #fff; border-radius: 14px 14px 0 0;
@@ -223,6 +224,33 @@ body { display: flex; flex-direction: column; }
 }
 #sheetHandle:active { cursor: grabbing; }
 #sheetHandle .grabber { width: 42px; height: 5px; border-radius: 999px; background: #c2ccd4; }
+#sheetHandle .sheetHint {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(22, 33, 45, .92);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .18);
+  pointer-events: none;
+}
+#sheetHandle .sheetHint::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(22, 33, 45, .92);
+  border-bottom: 0;
+}
+#sheetHandle .sheetHint[hidden] { display: none; }
 /* ドラッグ中はスナップのトランジションを切り、指へ即追従させる */
 body.sheet-dragging #panel { transition: none; }
 /* 最小化時はカードを隠す（ハンドル＋タブだけ覗く＝地図を最大化） */

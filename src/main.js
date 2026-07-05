@@ -59,6 +59,7 @@ const el = {
   stage: document.getElementById("stage"),
   tabBar: document.getElementById("tabs"),
   sheetHandle: document.getElementById("sheetHandle"),
+  sheetHint: document.getElementById("sheetHint"),
   travelToggle: document.getElementById("travelToggle"),
   routeSummary: document.getElementById("routeSummary"),
   arView: document.getElementById("arView"),
@@ -374,13 +375,22 @@ function expandSheetIfCollapsed() {
 
 function setupSheet() {
   const handle = el.sheetHandle, panel = el.panel;
+  const hintKey = "mihoSheetHintSeen";
   let dragging = false, startY = 0, startH = 0, moved = 0, raf = 0;
+  const hideHint = () => {
+    if (!el.sheetHint || el.sheetHint.hidden) return;
+    el.sheetHint.hidden = true;
+    try { localStorage.setItem(hintKey, "1"); } catch { /* localStorage unavailable */ }
+  };
+  try { el.sheetHint.hidden = localStorage.getItem(hintKey) === "1"; }
+  catch { el.sheetHint.hidden = false; }
   // ドラッグ中はトランジションを切っているので、地図はrAFで間引いて再計測し追従させる
   const liveInvalidate = () => {
     if (raf) return;
     raf = requestAnimationFrame(() => { raf = 0; MapView.invalidate(); });
   };
   const onDown = (e) => {
+    hideHint();
     dragging = true; moved = 0; startY = e.clientY;
     computeSheetSnaps();
     startH = panel.getBoundingClientRect().height;
@@ -413,9 +423,9 @@ function setupSheet() {
   handle.addEventListener("pointerup", onUp);
   handle.addEventListener("pointercancel", onUp);
   handle.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowUp") { setSheetSnap(sheetIndex + 1); e.preventDefault(); }
-    else if (e.key === "ArrowDown") { setSheetSnap(sheetIndex - 1); e.preventDefault(); }
-    else if (e.key === "Enter" || e.key === " ") { setSheetSnap((sheetIndex + 1) % 3); e.preventDefault(); }
+    if (e.key === "ArrowUp") { hideHint(); setSheetSnap(sheetIndex + 1); e.preventDefault(); }
+    else if (e.key === "ArrowDown") { hideHint(); setSheetSnap(sheetIndex - 1); e.preventDefault(); }
+    else if (e.key === "Enter" || e.key === " ") { hideHint(); setSheetSnap((sheetIndex + 1) % 3); e.preventDefault(); }
   });
   // スナップ完了（高さのトランジション終了）で地図を再計測＝タイル/経路が欠けない
   panel.addEventListener("transitionend", (e) => { if (e.propertyName === "height") MapView.invalidate(); });
