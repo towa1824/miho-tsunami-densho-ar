@@ -77,20 +77,23 @@ export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot", pres
     const distKind = useRoad ? "道路距離" : "直線距離";
     const cv = coordCaveat(f);
     const cvNote = cv ? `<div class="meta">📍 ${esc(cv)}</div>` : "";
-    return `<div class="card">
+    return `<div class="card facCard">
       <h3><span class="rankNo">${i + 1}</span>${badge(f)}${esc(f.name)}</h3>
-      <div class="meta">現在地から ${esc(distKind)} <span class="dist">${formatDist(shownDist)}</span>
+      <div class="facStats">現在地から ${esc(distKind)} <span class="dist">${formatDist(shownDist)}</span>
         ・${esc(tLabel)} <span class="dist">${esc(formatDuration(tmin))}</span>
         （${esc(compassLabel(bearingDeg(pos.lat, pos.lng, f.lat, f.lng)))}方向）｜${esc(f.district)}地区</div>
-      <div class="meta">${h}${esc(f.evacuation_place ?? "")}</div>
-      ${cvNote}
-      <div class="why">なぜここへ: ${esc(f.why)}</div>
-      ${srcHtml(f)}
-      <div class="btnRow">
-        <button data-act="map" data-id="${esc(f.id)}">地図で経路</button>
+      <div class="btnRow facCta">
         <button data-act="ar" data-id="${esc(f.id)}" class="primary">現地目線で案内</button>
+        <button data-act="map" data-id="${esc(f.id)}">地図で経路</button>
       </div>
-      <div class="btnRow">${streetviewBtnHtml(f)}</div>
+      <div class="meta">${h}${esc(f.evacuation_place ?? "")}</div>
+      <details class="facMore">
+        <summary>なぜここへ・出典・注記</summary>
+        ${cvNote}
+        <div class="why">なぜここへ: ${esc(f.why)}</div>
+        ${srcHtml(f)}
+        <div class="btnRow">${streetviewBtnHtml(f)}</div>
+      </details>
     </div>`;
   }).join("");
 
