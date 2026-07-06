@@ -196,30 +196,24 @@ function onMapPick(lat, lng) {
   setPos({ lat, lng }, `地図で選択した地点 (${lat.toFixed(5)}, ${lng.toFixed(5)})`,
     { isDemo: true, recenter: false, posKind: "map" });
 }
-
 function useGps() {
   if (!navigator.geolocation) {
     el.locLabel.textContent = "GPS非対応の環境です。デモ地点を選んでください。";
-    el.locLabel.title = el.locLabel.textContent;
-    updateLocationUi();
     return;
   }
-  state.posKind = "gps";
   el.locLabel.textContent = "GPS取得中…";
-  el.locLabel.title = el.locLabel.textContent;
-  updateLocationUi();
   navigator.geolocation.getCurrentPosition(
-    (p) => setPos({ lat: p.coords.latitude, lng: p.coords.longitude }, "GPS現在地", { isDemo: false, posKind: "gps" }),
-    () => {
-      el.locLabel.textContent = "GPS取得に失敗。デモ地点に戻します。";
-      el.locLabel.title = el.locLabel.textContent;
+    (p) => setPos({ lat: p.coords.latitude, lng: p.coords.longitude }, "GPS現在地", { isDemo: false }),
+    (err) => {
+      el.locLabel.textContent = err && err.code === 1
+        ? "位置情報の利用が許可されていません。ブラウザの設定から許可するか、デモ地点をお使いください。"
+        : "GPS取得に失敗。デモ地点に戻します。";
       el.demoSelect.value = demoLocations[0].id;
       onDemoChange();
     },
     { enableHighAccuracy: true, timeout: 8000 }
   );
 }
-
 function updateLocationUi() {
   const labels = {
     demo: "デモ利用中",
