@@ -32,25 +32,18 @@ function srcHtml(r) {
 }
 
 // Googleストリートビューを開く追加ボタン。既存の「地図で経路」「現地目線で案内」は変更せず、
-// これを別ボタンとして添える。座標の無い施設は対象外。キー未設定時は無効化して理由を示す。
+// これを別ボタンとして添える。座標の無い施設は対象外。キー未設定時は導線ごと非表示にする
+// （押せないボタンを出さない。SV機能の存在は README / .env.example に記載済み）。
 function streetviewBtnHtml(f, label = "📷 Googleストリートビューで周辺を見る") {
-  if (!hasPos(f)) return "";
-  if (!STREETVIEW_ENABLED) {
-    return `<button class="svBtn" type="button" disabled
-      title="Google Street View APIキーが未設定です">📷 ストリートビュー（APIキー未設定）</button>`;
-  }
+  if (!hasPos(f) || !STREETVIEW_ENABLED) return "";
   return `<button class="svBtn" type="button" data-act="sv" data-id="${esc(f.id)}">${label}</button>`;
 }
 
 // 伝承カードに添える「📷 ストリートビューで見る」追加ボタン（案B: 別導線）。
 // 既存「🧭 ARで深く学ぶ」(合成3D)は一切変えず、これを別ボタンとして足す。座標の無い伝承は対象外。
-// キー未設定時は無効化して理由を示す（合成3Dの学習は従来どおり使えるので体験は壊れない）。
+// キー未設定時は導線ごと非表示（合成3Dの学習は従来どおり使えるので体験は壊れない）。
 function traditionSvBtnHtml(t) {
-  if (!hasPos(t)) return "";
-  if (!STREETVIEW_ENABLED) {
-    return `<button class="svBtn" type="button" disabled
-      title="Google Street View APIキーが未設定です">📷 ストリートビュー（APIキー未設定）</button>`;
-  }
+  if (!hasPos(t) || !STREETVIEW_ENABLED) return "";
   return `<button class="svBtn" type="button" data-act="svt" data-id="${esc(t.id)}">📷 ストリートビューで見る</button>`;
 }
 
@@ -77,6 +70,9 @@ export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot", pres
     const distKind = useRoad ? "道路距離" : "直線距離";
     const cv = coordCaveat(f);
     const cvNote = cv ? `<div class="meta">📍 ${esc(cv)}</div>` : "";
+    // キー未設定時はボタンが出ない＝空の btnRow（余白）を残さないよう行ごと省く
+    const svBtn = streetviewBtnHtml(f);
+    const svRow = svBtn ? `<div class="btnRow">${svBtn}</div>` : "";
     return `<div class="card">
       <h3><span class="rankNo">${i + 1}</span>${badge(f)}${esc(f.name)}</h3>
       <div class="meta">現在地から ${esc(distKind)} <span class="dist">${formatDist(shownDist)}</span>
@@ -90,7 +86,7 @@ export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot", pres
         <button data-act="map" data-id="${esc(f.id)}">地図で経路</button>
         <button data-act="ar" data-id="${esc(f.id)}" class="primary">現地目線で案内</button>
       </div>
-      <div class="btnRow">${streetviewBtnHtml(f)}</div>
+      ${svRow}
     </div>`;
   }).join("");
 
@@ -136,6 +132,9 @@ export function renderTraditionsTab(el, pos, handlers) {
     const intenStr = intensityLabel(t);
     const inten = intenStr
       ? `<div class="meta">推定震度: <b>${esc(intenStr)}</b>（寺院被害記録による）</div>` : "";
+    // キー未設定時はボタンが出ない＝空の btnRow（余白）を残さないよう行ごと省く
+    const svBtn = traditionSvBtnHtml(t);
+    const svRow = svBtn ? `<div class="btnRow">${svBtn}</div>` : "";
     return `<div class="card" ${highlight ? 'style="border:2px solid #ef6c00"' : ""}>
       <h3>${no != null ? `<span class="rankNo">${no}</span>` : ""}${badge(t)}${esc(t.title)}${highlight ? " <small>← いちばん近い</small>" : ""}</h3>
       <div class="meta">関連災害: ${esc(t.disaster)}　${dist}</div>
@@ -149,7 +148,7 @@ export function renderTraditionsTab(el, pos, handlers) {
         <button data-act="mapt" data-lat="${t.lat}" data-lng="${t.lng}">地図で見る</button>
         <button data-act="learn" data-id="${esc(t.id)}" class="primary">🧭 ARで深く学ぶ</button>
       </div>
-      <div class="btnRow">${traditionSvBtnHtml(t)}</div>` : ""}
+      ${svRow}` : ""}
     </div>`;
   };
 
