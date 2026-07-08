@@ -120,6 +120,14 @@
     "used_for": "指定避難所（清水三保第一小・清水第五中・清水三保第二小・清水南高・三保／折戸生涯学習交流館）の緯度経度"
   },
   {
+    "id": "cao_tsunami_hinan_wg_report",
+    "title": "中央防災会議 防災対策推進検討会議 津波避難対策検討ワーキンググループ「報告」",
+    "publisher": "内閣府 防災情報のページ",
+    "url": "https://www.bousai.go.jp/jishin/tsunami/hinan/pdf/report.pdf",
+    "accessed": "2026-07-05",
+    "used_for": "津波発生時の避難は徒歩避難を原則とすること、自動車避難には交通障害・渋滞・徒歩避難者の妨げ等の危険性があることの確認"
+  },
+  {
     "id": "gsi_hinanbasho_geojson",
     "title": "国土地理院 指定緊急避難場所データ（静岡県・GeoJSON）",
     "publisher": "国土地理院（G空間情報センター経由）",

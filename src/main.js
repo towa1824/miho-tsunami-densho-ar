@@ -66,6 +66,7 @@ const el = {
   sheetHandle: document.getElementById("sheetHandle"),
   sheetHint: document.getElementById("sheetHint"),
   travelToggle: document.getElementById("travelToggle"),
+  travelCaution: document.getElementById("travelCaution"),
   routeSummary: document.getElementById("routeSummary"),
   arView: document.getElementById("arView"),
   arHolder: document.getElementById("arCanvasHolder"),
@@ -315,6 +316,7 @@ function onTravelChange(mode) {
   state.facilityRoadOrder = null; // 徒歩/車で道路距離が変わるため取り直す
   [...el.travelToggle.querySelectorAll("button")].forEach((b) =>
     b.classList.toggle("on", b.dataset.travel === mode));
+  if (el.travelCaution) el.travelCaution.hidden = mode !== "car";
   renderActiveTab(); // カード/ARの所要時間を更新
   scheduleRoadOrder();
   if (state.routedFacilityId) showRouteFor(state.routedFacilityId); // 表示中の経路を引き直す
