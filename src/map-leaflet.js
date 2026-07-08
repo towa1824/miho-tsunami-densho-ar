@@ -143,6 +143,8 @@ export function initMap(el) {
     return div;
   };
   hint.addTo(map);
+  // 縮尺（距離感の目安）
+  L.control.scale({ position: "bottomleft", imperial: false }).addTo(map);
 
   // 地図をクリック → その地点を現在地に
   map.on("click", (e) => {
