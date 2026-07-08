@@ -489,7 +489,7 @@ async function startAR(facility) {
   } catch (e) {
     el.arOverlay.innerHTML =
       `<div class="arInfoCard">ビューを開始できませんでした。<br>
-       ARカメラはHTTPS・カメラ/方位センサー許可が必要です。「現地目線」タブの
+       ARカメラはHTTPS・カメラ/方位センサー許可が必要です。「AR/現地目線」タブの
        現地目線ビュー（カメラ不要）をご利用ください。<br><small>${String(e)}</small></div>`;
   }
 }
