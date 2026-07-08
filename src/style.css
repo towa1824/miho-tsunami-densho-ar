@@ -495,7 +495,6 @@ body.sheet-collapsed #panel { padding-top: 0; padding-bottom: 0; overflow: hidde
 .btnRow .svBtn {
   border-color: #6a1b9a; color: #6a1b9a; background: #faf5ff; font-weight: 700;
 }
-.btnRow .svBtn:disabled { border-color: #c0c6cc; color: #9aa3ab; background: #f3f5f7; }
 
 /* 道順ピルの「経路から外れています」警告（オレンジ寄りの赤）。aligned(緑)とは別状態 */
 #svGuide.warn { background: rgba(198,75,0,.94); }
