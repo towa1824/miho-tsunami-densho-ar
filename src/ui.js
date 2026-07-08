@@ -128,6 +128,13 @@ export function renderTraditionsTab(el, pos, handlers) {
   const noPos = traditions.filter((t) => !hasPos(t));
   const nearestId = pos && sorted.length ? sorted[0].id : null;
 
+  // 折りたたみ式カード（svCard/svToggle と同系統）。一覧ではタイトル・関連災害・距離・
+  // 要約先頭（2行クランプ）だけを見せ、詳細（記録高・推定震度・意味づけ・注意文・出典・ボタン）は
+  // 展開時のみ表示。要約は全文をDOMに置きCSSクランプで先頭だけ見せる（展開でクランプ解除）。
+  // 座標注記（coordCaveat）は距離の精度に関わるため折りたたみ時も隠さない。
+  // 見出しセマンティクスを保つため h3>button のディスクロージャー構成にする（button 内に h3 は
+  // 置けず、ヘッダ全体を button にすると見出しが消える）。ヘッダ全域のタップは .tradHead の
+  // クリック委譲で受け、button からのクリックもバブリングで同じ経路に乗る。
   const card = (t, no, highlight) => {
     const dist = t._dist != null
       ? `<span class="dist">${formatDist(t._dist)}</span>（${esc(compassLabel(bearingDeg(pos.lat, pos.lng, t.lat, t.lng)))}方向）` : "";
@@ -136,20 +143,28 @@ export function renderTraditionsTab(el, pos, handlers) {
     const intenStr = intensityLabel(t);
     const inten = intenStr
       ? `<div class="meta">推定震度: <b>${esc(intenStr)}</b>（寺院被害記録による）</div>` : "";
-    return `<div class="card" ${highlight ? 'style="border:2px solid #ef6c00"' : ""}>
-      <h3>${no != null ? `<span class="rankNo">${no}</span>` : ""}${badge(t)}${esc(t.title)}${highlight ? " <small>← いちばん近い</small>" : ""}</h3>
-      <div class="meta">関連災害: ${esc(t.disaster)}　${dist}</div>
-      ${(() => { const cv = coordCaveat(t); return cv ? `<div class="meta">📍 ${esc(cv)}</div>` : ""; })()}
-      ${ht}${inten}
-      <div style="margin-top:4px">${esc(t.summary)}</div>
-      <div class="why" style="border-left-color:#ef6c00;background:#fff7ef">避難行動への意味づけ: ${esc(t.evacuation_message)}</div>
-      <div class="caution">${esc(t.caution)}</div>
-      ${srcHtml(t)}
-      ${hasPos(t) ? `<div class="btnRow">
-        <button data-act="mapt" data-lat="${t.lat}" data-lng="${t.lng}">地図で見る</button>
-        <button data-act="learn" data-id="${esc(t.id)}" class="primary">🧭 ARで深く学ぶ</button>
+    const cv = coordCaveat(t);
+    return `<div class="card tradCard" ${highlight ? 'style="border:2px solid #ef6c00"' : ""}>
+      <div class="tradHead" data-act="toggleTrad">
+        <span class="tradHeadMain">
+          <h3><button class="tradToggle" type="button" aria-expanded="false">${no != null ? `<span class="rankNo">${no}</span>` : ""}${badge(t)}${esc(t.title)}${highlight ? " <small>← いちばん近い</small>" : ""}</button></h3>
+          <span class="meta">関連災害: ${esc(t.disaster)}　${dist}</span>
+          ${cv ? `<span class="meta">📍 ${esc(cv)}</span>` : ""}
+          <span class="tradSummary">${esc(t.summary)}</span>
+        </span>
+        <span class="navChev" aria-hidden="true">▸</span>
       </div>
-      <div class="btnRow">${traditionSvBtnHtml(t)}</div>` : ""}
+      <div class="tradBody">
+        ${ht}${inten}
+        <div class="why" style="border-left-color:#ef6c00;background:#fff7ef">避難行動への意味づけ: ${esc(t.evacuation_message)}</div>
+        <div class="caution">${esc(t.caution)}</div>
+        ${srcHtml(t)}
+        ${hasPos(t) ? `<div class="btnRow">
+          <button data-act="mapt" data-lat="${t.lat}" data-lng="${t.lng}">地図で見る</button>
+          <button data-act="learn" data-id="${esc(t.id)}" class="primary">🧭 ARで深く学ぶ</button>
+        </div>
+        <div class="btnRow">${traditionSvBtnHtml(t)}</div>` : ""}
+      </div>
     </div>`;
   };
 
@@ -159,6 +174,13 @@ export function renderTraditionsTab(el, pos, handlers) {
     ${noPos.length ? `<div class="sectionTitle">位置未取得の資料（READMEの未取得一覧参照）</div>` : ""}
     ${noPos.map((t) => card(t, null, false)).join("")}`;
   bindActs(el, handlers);
+  // 展開トグルは伝承タブ内で完結する表示状態なので handlers を通さずここで配線する。
+  // タブ再描画（現在地変更・タブ切替）で既定の折りたたみに戻る（svCard と同じ既定）。
+  el.querySelectorAll('.tradHead[data-act="toggleTrad"]').forEach((h) =>
+    h.addEventListener("click", () => {
+      const on = h.closest(".tradCard").classList.toggle("expanded");
+      h.querySelector(".tradToggle").setAttribute("aria-expanded", on ? "true" : "false");
+    }));
   // 表示順(=地図マーカーの番号)を共有するため、座標ありの表示リストを返す。
   // 位置未取得(noPos)はマーカーが無いので番号を振らない＝返さない。
   return sorted;

@@ -277,6 +277,31 @@ body.sheet-collapsed #panel { padding-top: 0; padding-bottom: 0; overflow: hidde
   background: var(--c-warn-bg); border-radius: 3px; padding: 3px 6px;
 }
 
+/* 伝承カードの折りたたみ（svCard/svToggle と同系統の見た目）。
+   折りたたみ時はタイトル・関連災害・距離・要約先頭のみ、.expanded で詳細(.tradBody)を表示。
+   見出しは h3>button（.tradToggle）で保ち、タップ領域はヘッダ全体（.tradHead） */
+.tradCard { padding: 0; }
+.tradHead {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 9px 10px; cursor: pointer;
+}
+.tradHead .tradHeadMain { flex: 1; min-width: 0; }
+.tradToggle {
+  border: none; background: none; padding: 0; text-align: left; cursor: pointer;
+  font: inherit; font-weight: 700; color: inherit;
+}
+.tradHead .meta { display: block; }
+.tradHead .tradSummary {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  margin-top: 4px;
+}
+.tradHead .navChev { color: #8a97a3; font-size: 12px; flex: 0 0 auto; margin-top: 3px; }
+.tradCard.expanded .tradHead .navChev { display: inline-block; transform: rotate(90deg); }
+/* display:block にするとクランプ(-webkit-box)が外れて全文表示になる */
+.tradCard.expanded .tradSummary { display: block; }
+.tradBody { display: none; padding: 0 10px 9px; }
+.tradCard.expanded .tradBody { display: block; }
+
 .badge {
   display: inline-block; color: #fff; border-radius: 4px;
   font-size: 10px; font-weight: 700; padding: 1px 6px; margin-right: 5px;
