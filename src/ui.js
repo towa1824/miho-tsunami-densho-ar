@@ -88,7 +88,7 @@ export function renderFacilitiesTab(el, pos, handlers, travelMode = "foot", pres
       ${srcHtml(f)}
       <div class="btnRow">
         <button data-act="map" data-id="${esc(f.id)}">地図で経路</button>
-        <button data-act="ar" data-id="${esc(f.id)}" class="primary">現地目線で案内</button>
+        <button data-act="ar" data-id="${esc(f.id)}" class="primary">AR/現地目線で案内</button>
       </div>
       <div class="btnRow">${streetviewBtnHtml(f)}</div>
     </div>`;
