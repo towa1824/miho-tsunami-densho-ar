@@ -535,6 +535,22 @@ body.sheet-collapsed #panel { padding-top: 0; padding-bottom: 0; overflow: hidde
 }
 .btnRow .svBtn:disabled { border-color: #c0c6cc; color: #9aa3ab; background: #f3f5f7; }
 
+/* ===== 避難施設カード専用（距離・時間・主CTAを上部に優先配置）=====
+   共有の .card / .btnRow は他タブでも使うため変更せず、.facCard 配下で上書きする */
+.facCard .facStats { margin: 2px 0 2px; font-size: 13px; color: #37444d; line-height: 1.5; }
+.facCard .facStats .dist { font-size: 16px; }
+/* 屋外・片手操作を想定し、カード内ボタンはタップ高さ44px目安 */
+.facCard .btnRow button { min-height: 44px; }
+.facCard .facCta button { font-size: 13.5px; }
+/* 主CTA（現地目線で案内）を太字・広めにし、副CTA（地図で経路）と視覚的に区別 */
+.facCard .facCta button.primary { flex: 1.5; font-weight: 700; font-size: 14.5px; }
+.facCard .facMore { margin-top: 4px; }
+.facCard .facMore summary {
+  min-height: 44px; box-sizing: border-box; padding: 13px 2px;
+  cursor: pointer; font-size: 11.5px; color: #1565c0;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* 道順ピルの「経路から外れています」警告（オレンジ寄りの赤）。aligned(緑)とは別状態 */
 #svGuide.warn { background: rgba(198,75,0,.94); }
 #svGuide.warn b { color: #ffe0b2; }
